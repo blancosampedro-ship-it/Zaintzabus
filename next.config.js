@@ -10,9 +10,7 @@ const nextConfig = {
     // your project has type errors. Use this temporarily while fixing type issues.
     ignoreBuildErrors: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['firebase-admin'],
-  },
+  serverExternalPackages: ['firebase-admin'],
   images: {
     remotePatterns: [
       {

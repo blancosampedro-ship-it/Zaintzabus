@@ -1,0 +1,204 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "criticidad", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "asignadoA.id", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "sla.cumpleSLA", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "descripcion", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "descripcion", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "codigo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "codigo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "planes_preventivos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "activo", "order": "ASCENDING" },
+        { "fieldPath": "proximaEjecucion", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "planes_preventivos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "tipoActivo", "order": "ASCENDING" },
+        { "fieldPath": "codigo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditoria",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "coleccion", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditoria",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "movimientos_inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "inventarioId", "order": "ASCENDING" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ubicacionActual.tipo", "order": "ASCENDING" },
+        { "fieldPath": "ubicacionActual.id", "order": "ASCENDING" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "propiedad.operadorAsignadoId", "order": "ASCENDING" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "movimientosEquipo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "equipoId", "order": "ASCENDING" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "movimientosEquipo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipoMovimiento", "order": "ASCENDING" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "movimientosEquipo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicosIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenesTrabajo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicoId", "order": "ASCENDING" },
+        { "fieldPath": "auditoria.createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenesTrabajo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "operadorId", "order": "ASCENDING" },
+        { "fieldPath": "auditoria.createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contratos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "operadorId", "order": "ASCENDING" },
+        { "fieldPath": "fechaInicio", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

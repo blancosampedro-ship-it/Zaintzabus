@@ -1,0 +1,16 @@
+export * from '@/lib/firebase/services/errors';
+export * from '@/lib/firebase/services/base';
+export * from '@/lib/firebase/services/utils';
+
+export * from '@/lib/firebase/services/operadores.service';
+export * from '@/lib/firebase/services/ubicaciones.service';
+export * from '@/lib/firebase/services/laboratorios.service';
+export * from '@/lib/firebase/services/tiposEquipo.service';
+export * from '@/lib/firebase/services/autobuses.service';
+export * from '@/lib/firebase/services/tecnicos.service';
+export * from '@/lib/firebase/services/equipos.service';
+export * from '@/lib/firebase/services/movimientosEquipo.service';
+export * from '@/lib/firebase/services/incidencias.service';
+export * from '@/lib/firebase/services/ordenesTrabajo.service';
+export * from '@/lib/firebase/services/contratos.service';
+export * from '@/lib/firebase/services/preventivos.service';

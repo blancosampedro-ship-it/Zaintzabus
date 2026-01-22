@@ -1,0 +1,310 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Get user's custom claims
+    function getUserClaims() {
+      return request.auth.token;
+    }
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user has specific role
+    function hasRole(role) {
+      return isAuthenticated() && getUserClaims().rol == role;
+    }
+    
+    // Check if user has any of the specified roles
+    function hasAnyRole(roles) {
+      return isAuthenticated() && getUserClaims().rol in roles;
+    }
+    
+    // Check if user is DFG (super admin)
+    function isDFG() {
+      return hasRole('dfg');
+    }
+    
+    // Check if user belongs to tenant
+    function belongsToTenant(tenantId) {
+      return isAuthenticated() && getUserClaims().tenantId == tenantId;
+    }
+    
+    // Check if user can access tenant (own tenant or DFG)
+    function canAccessTenant(tenantId) {
+      return isDFG() || belongsToTenant(tenantId);
+    }
+    
+    // DFG es solo lectura (nunca escribe)
+    function canWriteToTenant(tenantId) {
+      return belongsToTenant(tenantId) && !isDFG();
+    }
+
+    // Roles canónicos
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isManager() {
+      return hasAnyRole(['admin', 'jefe_mantenimiento']);
+    }
+
+    function isTechnicianOrHigher() {
+      return hasAnyRole(['admin', 'jefe_mantenimiento', 'tecnico']);
+    }
+
+    function isOperatorOrHigher() {
+      return hasAnyRole(['admin', 'jefe_mantenimiento', 'tecnico', 'operador']);
+    }
+    
+    // Validate timestamp is server timestamp
+    function isServerTimestamp(field) {
+      return request.resource.data[field] == request.time;
+    }
+    
+    // ============================================
+    // TENANTS COLLECTION
+    // ============================================
+    
+    match /tenants/{tenantId} {
+      // Only DFG can read/write tenant configurations
+      allow read: if canAccessTenant(tenantId);
+      allow write: if false;
+      
+      // ==========================================
+      // INCIDENCIAS SUBCOLLECTION
+      // ==========================================
+      
+      match /incidencias/{incidenciaId} {
+        // Read: Any authenticated user with access to tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Create: Operador/técnico/manager/admin (DFG no)
+        allow create: if canWriteToTenant(tenantId)
+                && isOperatorOrHigher()
+                && request.resource.data.tenantId == tenantId
+                && isValidIncidenciaState(request.resource.data.estado);
+        
+        // Update: Based on role and canonical state transition
+        allow update: if canWriteToTenant(tenantId)
+                && isOperatorOrHigher()
+                && request.resource.data.tenantId == tenantId
+                && isValidIncidenciaState(request.resource.data.estado)
+                && validStateTransition(resource.data, request.resource.data);
+        
+        // Delete: Only managers can delete (soft delete preferred)
+        allow delete: if canWriteToTenant(tenantId) && isManager();
+        
+        function isValidIncidenciaState(estado) {
+          return estado in {
+            'nueva': true,
+            'en_analisis': true,
+            'en_intervencion': true,
+            'resuelta': true,
+            'cerrada': true,
+            'reabierta': true
+          };
+        }
+
+        // Validate canonical state transitions
+        function validStateTransition(before, after) {
+          let validTransitions = {
+            'nueva': ['en_analisis', 'cerrada'],
+            'en_analisis': ['en_intervencion', 'nueva'],
+            'en_intervencion': ['resuelta', 'en_analisis'],
+            'resuelta': ['cerrada', 'reabierta'],
+            'cerrada': ['reabierta'],
+            'reabierta': ['en_analisis']
+          };
+
+          return before.estado == after.estado ||
+                 after.estado in validTransitions[before.estado];
+        }
+      }
+      
+      // ==========================================
+      // INVENTARIO SUBCOLLECTION
+      // ==========================================
+      
+      match /inventario/{itemId} {
+        // Read: Any authenticated user with access to tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Create: Technicians and managers can create items
+        allow create: if canWriteToTenant(tenantId) 
+                      && isTechnicianOrHigher()
+                      && request.resource.data.tenantId == tenantId;
+        
+        // Update: Technicians and managers can update
+        allow update: if canWriteToTenant(tenantId) 
+                      && isTechnicianOrHigher()
+                      && request.resource.data.tenantId == tenantId;
+        
+        // Delete: Only managers can delete
+        allow delete: if canWriteToTenant(tenantId) && isManager();
+      }
+      
+      // ==========================================
+      // MOVIMIENTOS INVENTARIO SUBCOLLECTION
+      // tenants/{tenantId}/inventario/{itemId}/movimientos/{movId}
+      // ==========================================
+
+      match /inventario/{itemId}/movimientos/{movimientoId} {
+        allow read: if canAccessTenant(tenantId) && isTechnicianOrHigher();
+
+        allow create: if canWriteToTenant(tenantId)
+                      && isTechnicianOrHigher()
+                      && request.resource.data.tenantId == tenantId;
+
+        allow update, delete: if false;
+      }
+      
+      // ==========================================
+      // ACTIVOS SUBCOLLECTION
+      // ==========================================
+      
+      match /activos/{activoId} {
+        // Read: Any authenticated user with access to tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Create: Only managers can create assets
+        allow create: if canWriteToTenant(tenantId) 
+                      && isManager()
+                      && request.resource.data.tenantId == tenantId;
+        
+        // Update: Technicians can update status, managers can update all
+        allow update: if canWriteToTenant(tenantId) 
+                      && isTechnicianOrHigher()
+                      && request.resource.data.tenantId == tenantId;
+        
+        // Delete: Only managers can delete (soft delete preferred)
+        allow delete: if canWriteToTenant(tenantId) && isManager();
+      }
+      
+      // ==========================================
+      // PREVENTIVO SUBCOLLECTION
+      // tenants/{tenantId}/preventivo/{id}
+      // ==========================================
+
+      match /preventivo/{preventivoId} {
+        allow read: if canAccessTenant(tenantId);
+
+        allow create: if canWriteToTenant(tenantId)
+                      && isManager()
+                      && request.resource.data.tenantId == tenantId;
+
+        allow update: if canWriteToTenant(tenantId)
+                      && isTechnicianOrHigher()
+                      && request.resource.data.tenantId == tenantId;
+
+        allow delete: if canWriteToTenant(tenantId) && isManager();
+      }
+      
+      // ==========================================
+      // USUARIOS SUBCOLLECTION
+      // ==========================================
+      
+      match /usuarios/{usuarioId} {
+        // Read: Users can read their own, managers can read all
+        allow read: if canAccessTenant(tenantId) 
+                    && (request.auth.uid == usuarioId || isManager());
+        
+        // Create: Only managers can create users
+        allow create: if canWriteToTenant(tenantId) && isManager();
+        
+        // Update: Users can update their own profile, managers can update all
+        allow update: if canWriteToTenant(tenantId) 
+                      && (request.auth.uid == usuarioId || isManager());
+        
+        // Delete: Only managers can delete users
+        allow delete: if canWriteToTenant(tenantId) && isManager();
+      }
+      
+      // ==========================================
+      // AUDITORIA SUBCOLLECTION
+      // ==========================================
+      
+      match /auditoria/{logId} {
+        // Read: Only managers and DFG can read audit logs
+        allow read: if canAccessTenant(tenantId) && (isManager() || isAdmin());
+        
+        // Create: System writes only (via Cloud Functions or admin SDK)
+        // In production, this should be allow create: if false;
+        // and handled server-side only
+        allow create: if canWriteToTenant(tenantId) && isTechnicianOrHigher();
+        
+        // Update/Delete: Never allowed (immutable audit trail)
+        allow update, delete: if false;
+      }
+      
+      // ==========================================
+      // CONFIGURACION SUBCOLLECTION
+      // ==========================================
+      
+      match /configuracion/{configId} {
+        // Read: Any authenticated user with access to tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Write: Only managers can modify configuration
+        allow write: if canWriteToTenant(tenantId) && isManager();
+      }
+      
+      // ==========================================
+      // SLA METRICS SUBCOLLECTION
+      // ==========================================
+      
+      match /sla_metrics/{metricId} {
+        // Read: Any authenticated user with access to tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Write: System only (via Cloud Functions)
+        // In production, this should be allow write: if false;
+        allow create: if canWriteToTenant(tenantId) && isManager();
+        allow update, delete: if false;
+      }
+    }
+    
+    // ============================================
+    // GLOBAL COLLECTIONS (DFG Only)
+    // ============================================
+    
+    // Global SLA targets and configuration
+    match /sla_targets/{targetId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    
+    // Global reports and analytics
+    match /global_reports/{reportId} {
+      allow read: if isDFG();
+      allow write: if false;
+    }
+    
+    // System notifications
+    match /notificaciones/{notificationId} {
+      allow read: if isAuthenticated() 
+                  && (resource.data.destinatarioId == request.auth.uid 
+                      || resource.data.tenantId == getUserClaims().tenantId
+                      || isDFG());
+      allow create: if isAuthenticated() && !isDFG();
+      allow update: if isAuthenticated() 
+                    && !isDFG()
+                    && resource.data.destinatarioId == request.auth.uid;
+      allow delete: if false;
+    }
+    
+    // ============================================
+    // DENY ALL OTHER ACCESS
+    // ============================================
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,313 @@
+import {
+  type Firestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  serverTimestamp,
+  type DocumentData,
+  type DocumentSnapshot,
+  type QueryConstraint,
+  type WhereFilterOp,
+  onSnapshot,
+  type Unsubscribe,
+} from 'firebase/firestore';
+import { FirestoreServiceError } from '@/lib/firebase/services/errors';
+
+export interface ActorContext {
+  /** UID del actor. */
+  uid: string;
+  /** Email del actor (opcional). */
+  email?: string;
+  /** Rol del actor (opcional). */
+  rol?: string;
+}
+
+export interface ServiceContext {
+  /** Tenant actual (si aplica). */
+  tenantId?: string;
+  /** Actor que ejecuta la operación (para auditoría). */
+  actor?: ActorContext;
+}
+
+export interface ListPage<T> {
+  items: T[];
+  lastDoc: DocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+export interface WhereFilter {
+  fieldPath: string;
+  op: WhereFilterOp;
+  value: unknown;
+}
+
+export interface OrderBySpec {
+  fieldPath: string;
+  direction?: 'asc' | 'desc';
+}
+
+export interface ListOptions {
+  filters?: WhereFilter[];
+  orderBy?: OrderBySpec[];
+  pageSize?: number;
+  startAfter?: DocumentSnapshot<DocumentData>;
+  includeDeleted?: boolean;
+}
+
+export interface SearchOptions {
+  /** Campo array para búsqueda (por defecto `searchTerms`). */
+  field?: string;
+  /** Número máximo de resultados. */
+  limit?: number;
+  /** Incluye eliminados. */
+  includeDeleted?: boolean;
+}
+
+export type CollectionPathBuilder = (ctx: Required<Pick<ServiceContext, 'tenantId'>> | ServiceContext) => string;
+
+/**
+ * Servicio base genérico (SDK cliente) con:
+ * - CRUD
+ * - Soft delete (eliminado + fecha_eliminacion)
+ * - Auditoría (creado_por, actualizado_por, createdAt, updatedAt)
+ * - Listado paginado + filtros
+ * - Búsqueda por términos (array-contains-any)
+ * - Listener realtime
+ */
+export class BaseFirestoreService<T extends { id: string }> {
+  protected readonly db: Firestore;
+  protected readonly collectionPath: CollectionPathBuilder;
+
+  constructor(db: Firestore, collectionPath: CollectionPathBuilder) {
+    this.db = db;
+    this.collectionPath = collectionPath;
+  }
+
+  protected col(ctx: ServiceContext) {
+    const path = this.collectionPath(ctx);
+    return collection(this.db, path);
+  }
+
+  protected ref(ctx: ServiceContext, id: string) {
+    return doc(this.db, this.collectionPath(ctx), id);
+  }
+
+  protected withAuditOnCreate(data: Record<string, unknown>, ctx?: ServiceContext): Record<string, unknown> {
+    return {
+      ...data,
+      eliminado: false,
+      creado_por: ctx?.actor?.uid,
+      actualizado_por: ctx?.actor?.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+  }
+
+  protected withAuditOnUpdate(data: Record<string, unknown>, ctx?: ServiceContext): Record<string, unknown> {
+    return {
+      ...data,
+      actualizado_por: ctx?.actor?.uid,
+      updatedAt: serverTimestamp(),
+    };
+  }
+
+  async createAutoId(ctx: ServiceContext, data: Omit<T, 'id'>): Promise<string> {
+    try {
+      const docRef = await addDoc(this.col(ctx), this.withAuditOnCreate(data as unknown as Record<string, unknown>, ctx));
+      return docRef.id;
+    } catch (err) {
+      throw new FirestoreServiceError('unknown', 'Error creando documento', err);
+    }
+  }
+
+  async createWithId(ctx: ServiceContext, id: string, data: Omit<T, 'id'>): Promise<void> {
+    try {
+      await setDoc(this.ref(ctx, id), this.withAuditOnCreate(data as unknown as Record<string, unknown>, ctx), { merge: false });
+    } catch (err) {
+      throw new FirestoreServiceError('unknown', 'Error creando documento con ID', err);
+    }
+  }
+
+  async getById(ctx: ServiceContext, id: string): Promise<T | null> {
+    try {
+      const snap = await getDoc(this.ref(ctx, id));
+      if (!snap.exists()) return null;
+
+      const data = { id: snap.id, ...(snap.data() as Record<string, unknown>) } as T;
+
+      if ((data as any).eliminado) {
+        return null;
+      }
+
+      return data;
+    } catch (err) {
+      throw new FirestoreServiceError('unknown', 'Error obteniendo documento', err);
+    }
+  }
+
+  async updatePartial(ctx: ServiceContext, id: string, patch: Partial<T>): Promise<void> {
+    try {
+      const snap = await getDoc(this.ref(ctx, id));
+      if (!snap.exists()) throw new FirestoreServiceError('not-found', 'Documento no encontrado');
+
+      await updateDoc(this.ref(ctx, id), this.withAuditOnUpdate(patch as unknown as Record<string, unknown>, ctx));
+    } catch (err) {
+      if (err instanceof FirestoreServiceError) throw err;
+      throw new FirestoreServiceError('unknown', 'Error actualizando documento', err);
+    }
+  }
+
+  /** Soft delete: marca `eliminado=true` y `fecha_eliminacion` en lugar de borrar. */
+  async softDelete(ctx: ServiceContext, id: string): Promise<void> {
+    try {
+      const snap = await getDoc(this.ref(ctx, id));
+      if (!snap.exists()) throw new FirestoreServiceError('not-found', 'Documento no encontrado');
+
+      await updateDoc(
+        this.ref(ctx, id),
+        this.withAuditOnUpdate(
+          {
+            eliminado: true,
+            fecha_eliminacion: serverTimestamp(),
+            eliminado_por: ctx.actor?.uid,
+          },
+          ctx
+        )
+      );
+    } catch (err) {
+      if (err instanceof FirestoreServiceError) throw err;
+      throw new FirestoreServiceError('unknown', 'Error eliminando documento (soft delete)', err);
+    }
+  }
+
+  /** Borrado físico (usar solo para mantenimiento). */
+  async hardDelete(ctx: ServiceContext, id: string): Promise<void> {
+    try {
+      await deleteDoc(this.ref(ctx, id));
+    } catch (err) {
+      throw new FirestoreServiceError('unknown', 'Error eliminando documento (hard delete)', err);
+    }
+  }
+
+  async list(ctx: ServiceContext, options: ListOptions = {}): Promise<ListPage<T>> {
+    try {
+      const constraints: QueryConstraint[] = [];
+
+      for (const f of options.filters ?? []) {
+        constraints.push(where(f.fieldPath as any, f.op, f.value as any));
+      }
+
+      for (const o of options.orderBy ?? []) {
+        constraints.push(orderBy(o.fieldPath as any, o.direction ?? 'asc'));
+      }
+
+      const pageSize = options.pageSize ?? 20;
+      constraints.push(limit(pageSize + 1));
+
+      if (options.startAfter) {
+        constraints.push(startAfter(options.startAfter));
+      }
+
+      const q = query(this.col(ctx), ...constraints);
+      const snapshot = await getDocs(q);
+      const hasMore = snapshot.docs.length > pageSize;
+      const docs = hasMore ? snapshot.docs.slice(0, -1) : snapshot.docs;
+
+      const items = docs
+        .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T)
+        .filter((d) => (options.includeDeleted ? true : !(d as any).eliminado));
+
+      return {
+        items,
+        lastDoc: docs.length > 0 ? docs[docs.length - 1] : null,
+        hasMore,
+      };
+    } catch (err) {
+      throw new FirestoreServiceError('unknown', 'Error listando documentos', err);
+    }
+  }
+
+  /**
+   * Búsqueda por términos usando `array-contains-any` (OR) sobre un array de tokens.
+   * Requiere un campo `searchTerms: string[]` precomputado.
+   */
+  async searchByTerms(ctx: ServiceContext, terms: string[], options: SearchOptions = {}): Promise<T[]> {
+    try {
+      if (!terms.length) return [];
+
+      const field = options.field ?? 'searchTerms';
+      const max = options.limit ?? 20;
+
+      const constraints: QueryConstraint[] = [];
+      constraints.push(where(field as any, 'array-contains-any', terms.slice(0, 10) as any));
+      constraints.push(limit(max));
+
+      const q = query(this.col(ctx), ...constraints);
+      const snapshot = await getDocs(q);
+
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T);
+      return options.includeDeleted ? items : items.filter((d) => !(d as any).eliminado);
+    } catch (err) {
+      throw new FirestoreServiceError('unknown', 'Error buscando documentos', err);
+    }
+  }
+
+  /** Listener realtime por ID. Devuelve `unsubscribe`. */
+  listenById(ctx: ServiceContext, id: string, cb: (doc: T | null) => void, onError?: (err: unknown) => void): Unsubscribe {
+    return onSnapshot(
+      this.ref(ctx, id),
+      (snap) => {
+        if (!snap.exists()) {
+          cb(null);
+          return;
+        }
+        const data = { id: snap.id, ...(snap.data() as Record<string, unknown>) } as T;
+        if ((data as any).eliminado) {
+          cb(null);
+          return;
+        }
+        cb(data);
+      },
+      (err) => {
+        onError?.(err);
+      }
+    );
+  }
+
+  /** Listener realtime para un listado (query). */
+  listenList(ctx: ServiceContext, options: ListOptions, cb: (items: T[]) => void, onError?: (err: unknown) => void): Unsubscribe {
+    const constraints: QueryConstraint[] = [];
+
+    for (const f of options.filters ?? []) {
+      constraints.push(where(f.fieldPath as any, f.op, f.value as any));
+    }
+
+    for (const o of options.orderBy ?? []) {
+      constraints.push(orderBy(o.fieldPath as any, o.direction ?? 'asc'));
+    }
+
+    const pageSize = options.pageSize ?? 50;
+    constraints.push(limit(pageSize));
+
+    const q = query(this.col(ctx), ...constraints);
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T);
+        cb(options.includeDeleted ? items : items.filter((d) => !(d as any).eliminado));
+      },
+      (err) => onError?.(err)
+    );
+  }
+}

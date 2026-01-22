@@ -1,0 +1,86 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserClaims() {
+      return request.auth.token;
+    }
+    
+    function belongsToTenant(tenantId) {
+      return isAuthenticated() && getUserClaims().tenantId == tenantId;
+    }
+    
+    function isDFG() {
+      return isAuthenticated() && getUserClaims().rol == 'dfg';
+    }
+    
+    function canAccessTenant(tenantId) {
+      return isDFG() || belongsToTenant(tenantId);
+    }
+    
+    function isValidImageType() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    function isValidDocumentType() {
+      return request.resource.contentType.matches('application/pdf') ||
+             request.resource.contentType.matches('image/.*');
+    }
+    
+    function isUnderSizeLimit(maxSizeMB) {
+      return request.resource.size < maxSizeMB * 1024 * 1024;
+    }
+    
+    // Tenant-specific files
+    match /tenants/{tenantId}/{allPaths=**} {
+      // Read: Users with access to tenant
+      allow read: if canAccessTenant(tenantId);
+      
+      // Write: Users belonging to tenant, with file type/size validation
+      allow write: if belongsToTenant(tenantId) 
+                   && isValidDocumentType()
+                   && isUnderSizeLimit(10);
+    }
+    
+    // Incidencia attachments
+    match /tenants/{tenantId}/incidencias/{incidenciaId}/{fileName} {
+      allow read: if canAccessTenant(tenantId);
+      allow write: if belongsToTenant(tenantId) 
+                   && isValidDocumentType()
+                   && isUnderSizeLimit(10);
+    }
+    
+    // Activo images
+    match /tenants/{tenantId}/activos/{activoId}/{fileName} {
+      allow read: if canAccessTenant(tenantId);
+      allow write: if belongsToTenant(tenantId) 
+                   && isValidImageType()
+                   && isUnderSizeLimit(5);
+    }
+    
+    // User avatars
+    match /tenants/{tenantId}/usuarios/{userId}/avatar {
+      allow read: if canAccessTenant(tenantId);
+      allow write: if belongsToTenant(tenantId) 
+                   && request.auth.uid == userId
+                   && isValidImageType()
+                   && isUnderSizeLimit(2);
+    }
+    
+    // Public assets (logos, etc.)
+    match /public/{fileName} {
+      allow read: if true;
+      allow write: if isDFG();
+    }
+    
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

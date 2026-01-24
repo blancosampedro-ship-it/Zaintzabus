@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '@/lib/firebase/config';
 import { EquiposService, MovimientosEquipoService, type ServiceContext } from '@/lib/firebase/services';
 import { useTenantId } from '@/contexts/OperadorContext';
@@ -8,20 +8,24 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Equipo, EstadoEquipo, MovimientoEquipo, TipoUbicacionEquipo } from '@/types';
 
 // ============================================
-// useEquipos (lista con filtros)
+// useEquipos (lista con filtros y búsqueda server-side)
 // ============================================
 
 export interface FiltrosEquipos {
   tipoEquipoId?: string;
   estado?: EstadoEquipo;
   operadorId?: string;
-  numeroSerie?: string;
+  ubicacionTipo?: TipoUbicacionEquipo;
+  ubicacionId?: string;
+  /** Término de búsqueda para searchTerms (código, serie, ICCID, etc.) */
+  searchTerm?: string;
   pageSize?: number;
 }
 
 interface UseEquiposResult {
   equipos: Equipo[];
   loading: boolean;
+  searching: boolean; // Estado separado para búsquedas (evita parpadeo)
   error: string | null;
   hasMore: boolean;
   loadMore: () => Promise<void>;
@@ -34,16 +38,22 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
 
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<any>(null);
+
+  // Ref para cancelar búsquedas obsoletas (debounce)
+  const searchVersionRef = useRef(0);
 
   // Estabilizar filtros para evitar re-renders innecesarios
   const pageSize = filtros.pageSize ?? 50;
   const tipoEquipoId = filtros.tipoEquipoId;
   const estado = filtros.estado;
   const operadorId = filtros.operadorId;
-  const numeroSerie = filtros.numeroSerie;
+  const ubicacionTipo = filtros.ubicacionTipo;
+  const ubicacionId = filtros.ubicacionId;
+  const searchTerm = filtros.searchTerm;
 
   const fetch = useCallback(
     async (append = false, startAfterDoc?: any) => {
@@ -53,8 +63,18 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
         return;
       }
 
+      // Incrementar versión para cancelar búsquedas anteriores
+      const currentVersion = ++searchVersionRef.current;
+
       try {
-        if (!append) setLoading(true);
+        // Usar searching en vez de loading para búsquedas (evita parpadeo)
+        if (!append) {
+          if (searchTerm) {
+            setSearching(true);
+          } else {
+            setLoading(true);
+          }
+        }
         setError(null);
 
         const ctx: ServiceContext = {
@@ -68,10 +88,15 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
           tipoEquipoId,
           estado,
           operadorId,
-          numeroSerie,
+          ubicacionTipo,
+          ubicacionId,
+          searchTerm,
           pageSize,
           lastDoc: startAfterDoc,
         });
+
+        // Ignorar si hay una búsqueda más reciente
+        if (currentVersion !== searchVersionRef.current) return;
 
         if (append) {
           setEquipos((prev) => [...prev, ...result.items]);
@@ -82,13 +107,19 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
         setLastDoc(result.lastDoc);
         setHasMore(result.hasMore);
       } catch (err) {
+        // Ignorar errores de búsquedas obsoletas
+        if (currentVersion !== searchVersionRef.current) return;
+        
         console.error('Error en useEquipos:', err);
         setError('Error al cargar equipos');
       } finally {
-        setLoading(false);
+        if (currentVersion === searchVersionRef.current) {
+          setLoading(false);
+          setSearching(false);
+        }
       }
     },
-    [tenantId, user, pageSize, tipoEquipoId, estado, operadorId, numeroSerie]
+    [tenantId, user, pageSize, tipoEquipoId, estado, operadorId, ubicacionTipo, ubicacionId, searchTerm]
   );
 
   useEffect(() => {
@@ -98,7 +129,7 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
   const loadMore = useCallback(() => fetch(true, lastDoc), [fetch, lastDoc]);
   const refetch = useCallback(() => fetch(false), [fetch]);
 
-  return { equipos, loading, error, hasMore, loadMore, refetch };
+  return { equipos, loading, searching, error, hasMore, loadMore, refetch };
 }
 
 // ============================================
@@ -271,4 +302,179 @@ export function useEquiposPorUbicacion(
   }, [fetch]);
 
   return { equipos, loading, error, refetch: fetch };
+}
+
+// ============================================
+// useBusquedaRapidaEquipos (para autocompletar)
+// ============================================
+
+interface UseBusquedaRapidaResult {
+  resultados: Equipo[];
+  searching: boolean;
+  search: (term: string) => void;
+  clear: () => void;
+}
+
+/**
+ * Hook para búsqueda rápida con debounce.
+ * Ideal para input de autocompletar.
+ * @param debounceMs - Tiempo de debounce en ms (default 300)
+ */
+export function useBusquedaRapidaEquipos(debounceMs = 300): UseBusquedaRapidaResult {
+  const tenantId = useTenantId();
+  const { user } = useAuth();
+
+  const [resultados, setResultados] = useState<Equipo[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const versionRef = useRef(0);
+
+  const doSearch = useCallback(async (term: string) => {
+    if (!tenantId || term.trim().length < 2) {
+      setResultados([]);
+      setSearching(false);
+      return;
+    }
+
+    const currentVersion = ++versionRef.current;
+    setSearching(true);
+
+    try {
+      const ctx: ServiceContext = {
+        tenantId,
+        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
+      };
+
+      const service = new EquiposService(db);
+      const items = await service.busquedaRapida(ctx, term, 10);
+
+      // Solo actualizar si es la búsqueda más reciente
+      if (currentVersion === versionRef.current) {
+        setResultados(items);
+      }
+    } catch (err) {
+      console.error('Error en búsqueda rápida:', err);
+      if (currentVersion === versionRef.current) {
+        setResultados([]);
+      }
+    } finally {
+      if (currentVersion === versionRef.current) {
+        setSearching(false);
+      }
+    }
+  }, [tenantId, user]);
+
+  const search = useCallback((term: string) => {
+    setSearchTerm(term);
+    
+    // Cancelar búsqueda anterior
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (term.trim().length < 2) {
+      setResultados([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    debounceRef.current = setTimeout(() => {
+      doSearch(term);
+    }, debounceMs);
+  }, [doSearch, debounceMs]);
+
+  const clear = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    setSearchTerm('');
+    setResultados([]);
+    setSearching(false);
+  }, []);
+
+  // Cleanup en unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
+
+  return { resultados, searching, search, clear };
+}
+
+// ============================================
+// useEquiposEnStock (equipos en almacén/lab)
+// ============================================
+
+interface UseEquiposEnStockResult {
+  equipos: Equipo[];
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+/**
+ * Hook para obtener equipos en stock (almacén o laboratorio).
+ * Útil para técnicos buscando equipos disponibles.
+ */
+export function useEquiposEnStock(pageSize = 50): UseEquiposEnStockResult {
+  const tenantId = useTenantId();
+  const { user } = useAuth();
+
+  const [equipos, setEquipos] = useState<Equipo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+
+  const fetch = useCallback(async (append = false, startAfterDoc?: any) => {
+    if (!tenantId) {
+      setEquipos([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (!append) setLoading(true);
+      setError(null);
+
+      const ctx: ServiceContext = {
+        tenantId,
+        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
+      };
+
+      const service = new EquiposService(db);
+      const result = await service.getEquiposEnStock(ctx, pageSize, startAfterDoc);
+
+      if (append) {
+        setEquipos((prev) => [...prev, ...result.items]);
+      } else {
+        setEquipos(result.items);
+      }
+
+      setLastDoc(result.lastDoc);
+      setHasMore(result.hasMore);
+    } catch (err) {
+      console.error('Error en useEquiposEnStock:', err);
+      setError('Error al cargar equipos en stock');
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId, user, pageSize]);
+
+  useEffect(() => {
+    fetch(false);
+  }, [fetch]);
+
+  const loadMore = useCallback(() => fetch(true, lastDoc), [fetch, lastDoc]);
+  const refetch = useCallback(() => fetch(false), [fetch]);
+
+  return { equipos, loading, error, hasMore, loadMore, refetch };
 }

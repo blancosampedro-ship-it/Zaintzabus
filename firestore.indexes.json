@@ -206,6 +206,58 @@
         { "fieldPath": "operadorId", "order": "ASCENDING" },
         { "fieldPath": "fechaInicio", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchTerms", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipoEquipoId", "order": "ASCENDING" },
+        { "fieldPath": "searchTerms", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "searchTerms", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ubicacionActual.tipo", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipoEquipoId", "order": "ASCENDING" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "propiedad.operadorAsignadoId", "order": "ASCENDING" },
+        { "fieldPath": "searchTerms", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "codigoInterno", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

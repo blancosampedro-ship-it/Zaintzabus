@@ -19,17 +19,19 @@ import {
   EmptyState,
   CardGrid,
   ConfirmDialog,
+  Skeleton,
   type Column,
 } from '@/components/ui';
 import {
-  getEquipos,
   getResumenEquipos,
   getTiposEquipo,
   moverEquipo,
   darDeBajaEquipo,
   type ResumenEquipos,
 } from '@/lib/firebase/equipos';
-import { Equipo, TipoEquipo, ESTADOS_EQUIPO } from '@/types';
+import { useEquipos, type FiltrosEquipos } from '@/hooks/useEquipos';
+import { useDebounce } from '@/hooks/useDebounce';
+import { Equipo, TipoEquipo, ESTADOS_EQUIPO, type EstadoEquipo, type TipoUbicacionEquipo } from '@/types';
 import {
   Cpu,
   MapPin,
@@ -38,6 +40,7 @@ import {
   Wrench,
   AlertTriangle,
   Trash2,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
@@ -97,14 +100,16 @@ const estadoConfig = {
 export default function EquiposPage() {
   const router = useRouter();
   const { success, error: showError, ToastContainer } = useToast();
+  const observerRef = React.useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = React.useRef<HTMLDivElement>(null);
 
-  const [loading, setLoading] = React.useState(true);
-  const [equipos, setEquipos] = React.useState<Equipo[]>([]);
   const [resumen, setResumen] = React.useState<ResumenEquipos | null>(null);
   const [tiposEquipo, setTiposEquipo] = React.useState<TipoEquipo[]>([]);
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('table');
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [initialLoading, setInitialLoading] = React.useState(true);
 
+  // Filtros UI (estado local)
   const [filters, setFilters] = React.useState<EquiposFilters>({
     busqueda: '',
     tipoEquipoId: '',
@@ -113,64 +118,86 @@ export default function EquiposPage() {
     ubicacionTipo: '',
   });
 
+  // Debounce de la búsqueda (300ms)
+  const debouncedSearch = useDebounce(filters.busqueda, 300);
+
+  // Convertir filtros UI a filtros del hook
+  const hookFiltros: FiltrosEquipos = React.useMemo(() => ({
+    tipoEquipoId: filters.tipoEquipoId || undefined,
+    estado: (filters.estado as EstadoEquipo) || undefined,
+    operadorId: filters.operadorId || undefined,
+    ubicacionTipo: (filters.ubicacionTipo as TipoUbicacionEquipo) || undefined,
+    searchTerm: debouncedSearch || undefined,
+    pageSize: 50,
+  }), [filters.tipoEquipoId, filters.estado, filters.operadorId, filters.ubicacionTipo, debouncedSearch]);
+
+  // Hook principal con búsqueda server-side
+  const { 
+    equipos, 
+    loading, 
+    searching, 
+    hasMore, 
+    loadMore, 
+    refetch 
+  } = useEquipos(hookFiltros);
+
   // Modal states
   const [equipoToMove, setEquipoToMove] = React.useState<Equipo | null>(null);
   const [equipoToDelete, setEquipoToDelete] = React.useState<Equipo | null>(null);
 
-  // Load initial data
+  // Load tipos y resumen (solo al inicio)
   React.useEffect(() => {
-    loadData();
+    const loadInitialData = async () => {
+      try {
+        const [tipos, resumenData] = await Promise.all([
+          getTiposEquipo(),
+          getResumenEquipos(),
+        ]);
+        setTiposEquipo(tipos);
+        setResumen(resumenData);
+      } catch (err) {
+        console.error('Error loading initial data:', err);
+        showError('Error al cargar datos iniciales');
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    loadInitialData();
   }, []);
 
-  // Reload when filters change
+  // Infinite scroll con Intersection Observer
   React.useEffect(() => {
-    loadEquipos();
-  }, [filters]);
+    if (loading || !hasMore) return;
 
-  const loadData = async () => {
-    try {
-      const [tipos, resumenData] = await Promise.all([
-        getTiposEquipo(),
-        getResumenEquipos(),
-      ]);
-      setTiposEquipo(tipos);
-      setResumen(resumenData);
-      await loadEquipos();
-    } catch (err) {
-      console.error('Error loading data:', err);
-      showError('Error al cargar datos');
-    } finally {
-      setLoading(false);
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current);
     }
-  };
 
-  const loadEquipos = async () => {
-    try {
-      const result = await getEquipos({
-        tipoEquipoId: filters.tipoEquipoId || undefined,
-        estado: filters.estado || undefined,
-        operadorId: filters.operadorId || undefined,
-        ubicacionTipo: filters.ubicacionTipo || undefined,
-        pageSize: 100,
-      });
-      
-      // Filter by search term client-side
-      let filtered = result.items;
-      if (filters.busqueda) {
-        const search = filters.busqueda.toLowerCase();
-        filtered = filtered.filter(
-          (e) =>
-            e.codigoInterno.toLowerCase().includes(search) ||
-            e.numeroSerieFabricante?.toLowerCase().includes(search) ||
-            e.tipoEquipoNombre?.toLowerCase().includes(search)
-        );
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
       }
+    };
+  }, [hasMore, loading, loadMore]);
 
-      setEquipos(filtered);
+  // Refrescar resumen cuando cambian los equipos
+  const refreshStats = React.useCallback(async () => {
+    try {
+      const resumenData = await getResumenEquipos();
+      setResumen(resumenData);
     } catch (err) {
-      console.error('Error loading equipos:', err);
+      console.error('Error refreshing stats:', err);
     }
-  };
+  }, []);
 
   const handleMoveEquipo = async (data: MoverEquipoFormData) => {
     if (!equipoToMove) return;
@@ -198,8 +225,8 @@ export default function EquiposPage() {
 
     success('Equipo movido correctamente');
     setEquipoToMove(null);
-    loadEquipos();
-    loadData(); // Refresh stats
+    refetch();
+    refreshStats();
   };
 
   const handleDeleteEquipo = async () => {
@@ -213,8 +240,8 @@ export default function EquiposPage() {
       );
       success('Equipo dado de baja correctamente');
       setEquipoToDelete(null);
-      loadEquipos();
-      loadData();
+      refetch();
+      refreshStats();
     } catch (err) {
       showError('Error al dar de baja el equipo');
     }
@@ -297,9 +324,12 @@ export default function EquiposPage() {
     },
   ];
 
-  if (loading) {
+  if (initialLoading) {
     return <LoadingPage message="Cargando equipos..." />;
   }
+
+  // Indicador de búsqueda en progreso
+  const isSearching = searching || (filters.busqueda !== debouncedSearch);
 
   return (
     <div className="space-y-6">
@@ -317,6 +347,11 @@ export default function EquiposPage() {
           </h1>
           <p className="text-slate-400 mt-1">
             Gestión de equipos SAE, validadoras, cámaras y más
+            {equipos.length > 0 && (
+              <span className="ml-2 text-cyan-400">
+                ({equipos.length}{hasMore ? '+' : ''} resultados)
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -339,51 +374,101 @@ export default function EquiposPage() {
       />
 
       {/* Content */}
-      {equipos.length === 0 ? (
+      {loading && equipos.length === 0 ? (
+        // Skeleton durante carga inicial
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-16 bg-slate-800 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      ) : equipos.length === 0 ? (
         <EmptyState
           icon={Cpu}
-          title="No hay equipos"
-          description="Comienza añadiendo el primer equipo al sistema"
-          action={{
-            label: 'Nuevo Equipo',
-            onClick: () => router.push('/equipos/nuevo'),
-          }}
+          title={filters.busqueda ? 'Sin resultados' : 'No hay equipos'}
+          description={
+            filters.busqueda 
+              ? `No se encontraron equipos con "${filters.busqueda}"`
+              : 'Comienza añadiendo el primer equipo al sistema'
+          }
+          action={
+            filters.busqueda 
+              ? { label: 'Limpiar búsqueda', onClick: () => setFilters(f => ({ ...f, busqueda: '' })) }
+              : { label: 'Nuevo Equipo', onClick: () => router.push('/equipos/nuevo') }
+          }
         />
       ) : viewMode === 'table' ? (
-        <DataTable
-          data={equipos}
-          columns={columns}
-          selectable
-          selectedIds={selectedIds}
-          onSelectionChange={setSelectedIds}
-          onRowClick={(equipo) => router.push(`/equipos/${equipo.id}`)}
-          actions={(equipo) => (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEquipoToMove(equipo);
-                }}
-                className="p-1.5 text-slate-400 hover:text-white rounded"
-                title="Mover"
-              >
-                <MapPin className="h-4 w-4" />
-              </button>
+        <div className="relative">
+          {/* Indicador de búsqueda */}
+          {isSearching && (
+            <div className="absolute inset-0 bg-slate-900/50 z-10 flex items-center justify-center rounded-lg">
+              <div className="flex items-center gap-2 text-cyan-400">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Buscando...</span>
+              </div>
             </div>
           )}
-        />
+          <DataTable
+            data={equipos}
+            columns={columns}
+            selectable
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            onRowClick={(equipo) => router.push(`/equipos/${equipo.id}`)}
+            actions={(equipo) => (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEquipoToMove(equipo);
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-white rounded"
+                  title="Mover"
+                >
+                  <MapPin className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          />
+          {/* Trigger para infinite scroll */}
+          <div ref={loadMoreRef} className="h-4" />
+          {/* Indicador de carga de más */}
+          {loading && equipos.length > 0 && (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-cyan-400 mr-2" />
+              <span className="text-slate-400">Cargando más equipos...</span>
+            </div>
+          )}
+        </div>
       ) : (
-        <CardGrid className="grid-cols-3">
-          {equipos.map((equipo) => (
-            <EquipoCard
-              key={equipo.id}
-              equipo={equipo}
-              onEdit={(e) => router.push(`/equipos/${e.id}/editar`)}
-              onMove={setEquipoToMove}
-              onDelete={setEquipoToDelete}
-            />
-          ))}
-        </CardGrid>
+        <div className="relative">
+          {isSearching && (
+            <div className="absolute inset-0 bg-slate-900/50 z-10 flex items-center justify-center rounded-lg">
+              <div className="flex items-center gap-2 text-cyan-400">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Buscando...</span>
+              </div>
+            </div>
+          )}
+          <CardGrid className="grid-cols-3">
+            {equipos.map((equipo) => (
+              <EquipoCard
+                key={equipo.id}
+                equipo={equipo}
+                onEdit={(e) => router.push(`/equipos/${e.id}/editar`)}
+                onMove={setEquipoToMove}
+                onDelete={setEquipoToDelete}
+              />
+            ))}
+          </CardGrid>
+          {/* Trigger para infinite scroll */}
+          <div ref={loadMoreRef} className="h-4" />
+          {loading && equipos.length > 0 && (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-cyan-400 mr-2" />
+              <span className="text-slate-400">Cargando más equipos...</span>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Sidebar con estadísticas por tipo */}

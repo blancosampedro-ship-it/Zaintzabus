@@ -251,13 +251,22 @@ export class EquiposService extends BaseFirestoreService<Equipo> {
       .filter((e) => !(e as any).eliminado) as Equipo[];
   }
 
+  /**
+   * Búsqueda avanzada con soporte para:
+   * - Filtros estructurados (tipo, estado, operador, ubicación)
+   * - Búsqueda de texto usando array-contains en searchTerms
+   * - Paginación con cursor
+   */
   async busquedaAvanzada(
     ctx: ServiceContext,
     params: {
       tipoEquipoId?: string;
       estado?: EstadoEquipo;
       operadorId?: string;
-      numeroSerie?: string;
+      ubicacionTipo?: TipoUbicacionEquipo;
+      ubicacionId?: string;
+      // Búsqueda de texto - se busca en searchTerms con array-contains
+      searchTerm?: string;
       pageSize?: number;
       lastDoc?: DocumentSnapshot<DocumentData>;
     }
@@ -269,7 +278,15 @@ export class EquiposService extends BaseFirestoreService<Equipo> {
     if (params.tipoEquipoId) constraints.push(where('tipoEquipoId', '==', params.tipoEquipoId));
     if (params.estado) constraints.push(where('estado', '==', params.estado));
     if (params.operadorId) constraints.push(where('propiedad.operadorAsignadoId', '==', params.operadorId));
-    if (params.numeroSerie) constraints.push(where('numeroSerieFabricante', '==', params.numeroSerie));
+    if (params.ubicacionTipo) constraints.push(where('ubicacionActual.tipo', '==', params.ubicacionTipo));
+    if (params.ubicacionId) constraints.push(where('ubicacionActual.id', '==', params.ubicacionId));
+    
+    // Búsqueda de texto server-side usando searchTerms
+    // El término debe estar en minúsculas y normalizado
+    if (params.searchTerm && params.searchTerm.trim().length >= 2) {
+      const normalizedTerm = params.searchTerm.trim().toLowerCase();
+      constraints.push(where('searchTerms', 'array-contains', normalizedTerm));
+    }
 
     constraints.push(orderBy('codigoInterno', 'asc'));
     constraints.push(limit((params.pageSize ?? 50) + 1));
@@ -280,6 +297,69 @@ export class EquiposService extends BaseFirestoreService<Equipo> {
     const snap = await getDocs(q);
 
     const pageSize = params.pageSize ?? 50;
+    const hasMore = snap.docs.length > pageSize;
+    const docs = hasMore ? snap.docs.slice(0, -1) : snap.docs;
+
+    return {
+      items: (docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .filter((e) => !(e as any).eliminado) as Equipo[]),
+      lastDoc: docs.length ? docs[docs.length - 1] : null,
+      hasMore,
+    };
+  }
+
+  /**
+   * Búsqueda rápida por texto - optimizada para autocompletar
+   * Busca en: código, serie, ICCID, teléfono, IP, MAC
+   * Retorna máximo 10 resultados para UI rápida
+   */
+  async busquedaRapida(
+    ctx: ServiceContext,
+    searchTerm: string,
+    maxResults = 10
+  ): Promise<Equipo[]> {
+    if (!ctx.tenantId) throw new FirestoreServiceError('invalid-argument', 'tenantId requerido');
+    
+    const term = searchTerm.trim().toLowerCase();
+    if (term.length < 2) return [];
+
+    const q = query(
+      collection(this.db, `tenants/${ctx.tenantId}/equipos`),
+      where('searchTerms', 'array-contains', term),
+      orderBy('codigoInterno', 'asc'),
+      limit(maxResults)
+    );
+
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as any) }))
+      .filter((e) => !(e as any).eliminado) as Equipo[];
+  }
+
+  /**
+   * Obtiene equipos "en taller" (almacén/laboratorio) que no están en buses
+   * Útil para técnicos buscando stock disponible
+   */
+  async getEquiposEnStock(
+    ctx: ServiceContext,
+    pageSize = 50,
+    lastDoc?: DocumentSnapshot<DocumentData>
+  ) {
+    if (!ctx.tenantId) throw new FirestoreServiceError('invalid-argument', 'tenantId requerido');
+
+    const constraints: any[] = [
+      where('ubicacionActual.tipo', 'in', ['ubicacion', 'laboratorio']),
+      where('estado', 'in', ['en_almacen', 'en_laboratorio']),
+      orderBy('codigoInterno', 'asc'),
+      limit(pageSize + 1),
+    ];
+
+    if (lastDoc) constraints.push(startAfter(lastDoc));
+
+    const q = query(collection(this.db, `tenants/${ctx.tenantId}/equipos`), ...constraints);
+    const snap = await getDocs(q);
+
     const hasMore = snap.docs.length > pageSize;
     const docs = hasMore ? snap.docs.slice(0, -1) : snap.docs;
 

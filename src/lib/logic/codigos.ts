@@ -246,7 +246,7 @@ export function determinarTipoEntidad(
       return 'movimiento';
     default:
       // Verificar si es un tipo de equipo
-      const prefijosEquipo = Object.values(PREFIJOS.EQUIPO);
+      const prefijosEquipo = Object.values(PREFIJOS.EQUIPO) as string[];
       if (prefijosEquipo.includes(prefijo)) {
         return 'equipo';
       }

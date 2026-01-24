@@ -37,21 +37,23 @@ export {
   calcularMinutosLaborables,
   calcularTiempoFueraServicio,
   esDiaLaborable,
-  obtenerSiguienteDiaLaborable,
+  avanzarASiguienteLaborable,
   formatearMinutos,
+  estaEnHorarioServicio,
+  minutosLaborablesDia,
+  horaAMinutos,
   
   // Visualización
   getColorEstadoSLA,
   
   // Constantes
-  HORARIO_LABORAL,
-  SLA_TARGETS,
+  SLA_TIEMPOS_DEFAULT,
+  HORARIO_SERVICIO_DEFAULT,
   
   // Tipos
-  type CriticidadSLA,
-  type ConfiguracionSLA,
-  type EstadoSLA,
-  type MetricasSLA,
+  type HorarioServicio,
+  type ResultadoSLA,
+  type MetricasSLAIncidencia,
 } from './sla';
 
 // =============================================================================
@@ -73,12 +75,16 @@ export {
   
   // Visualización
   getColorEstadoIncidencia,
-  getIconoEstadoIncidencia,
-  getColorEstadoInventario,
   getColorEstadoActivo,
   
   // Validación de movimientos
   validarMovimientoEquipo,
+  
+  // Utilidades de estado
+  esIncidenciaAbierta,
+  esIncidenciaCerrada,
+  esActivoDisponible,
+  esEquipoDisponible,
   
   // Constantes
   TRANSICIONES_INCIDENCIA,
@@ -88,9 +94,6 @@ export {
   ETIQUETAS_ESTADO_INCIDENCIA,
   ETIQUETAS_ESTADO_INVENTARIO,
   ETIQUETAS_ESTADO_ACTIVO,
-  
-  // Tipos
-  type TipoRol,
 } from './estados';
 
 // =============================================================================
@@ -102,14 +105,16 @@ export {
   generarCodigoEquipo,
   generarCodigoOrdenTrabajo,
   generarCodigoPreventivo,
-  generarCodigoContrato,
-  generarCodigoFactura,
-  generarCodigoAlmacen,
+  generarCodigoEjecucionPreventivo,
+  generarCodigoMovimiento,
+  generarSiguienteCodigoIncidencia,
+  generarSiguienteCodigoOrdenTrabajo,
   
   // Extracción de información
   extraerCorrelativo,
   extraerAnio,
   extraerPrefijo,
+  determinarTipoEntidad,
   
   // Validación de códigos
   esCodigoIncidenciaValido,
@@ -117,13 +122,13 @@ export {
   esCodigoOrdenTrabajoValido,
   
   // Utilidades
-  padNumero,
+  calcularSiguienteCorrelativo,
   
   // Constantes
   PREFIJOS,
   
   // Tipos
-  type TipoEquipo,
+  type ConfiguracionCodigo,
 } from './codigos';
 
 // =============================================================================

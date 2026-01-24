@@ -1,15 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Input, Select } from '@/components/ui';
-import {
-  generarInformeIncidencias,
-  generarInformeSLA,
-  generarInformeInventario,
-  type DatosInforme,
-  type FiltrosInforme,
-} from '@/lib/firebase/metricas';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenantId } from '@/contexts/OperadorContext';
+import { useReportData, useOperadoresList } from '@/hooks/useReportData';
+import { RequirePermission } from '@/lib/permissions';
+
+// Lógica de transformación
+import {
+  incidenciasAFilasExcel,
+  generarResumenEjecutivoSLA,
+  generarResumenFlota,
+  formatMinutosAHoras,
+} from '@/lib/logic/reports';
+
+// Exportadores
+import { exportarIncidenciasExcel, exportarResumenEjecutivoExcel } from '@/lib/reports/excel';
+import { exportarResumenEjecutivoPDF, exportarIncidenciasPDF, exportarResumenFlotaPDF } from '@/lib/reports/pdf';
+import type { FiltrosInforme } from '@/lib/reports/types';
+
 import {
   FileText,
   Download,
@@ -18,93 +28,76 @@ import {
   Eye,
   Loader2,
   FileSpreadsheet,
-  FileJson,
   AlertTriangle,
-  Wrench,
-  Package,
   Clock,
   Bus,
-  Users,
   TrendingUp,
+  Building2,
+  FileDown,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// Tipos de informe disponibles
+// =============================================================================
+// TIPOS DE INFORME
+// =============================================================================
+
 const TIPOS_INFORME = [
   {
-    id: 'incidencias',
-    nombre: 'Incidencias',
-    descripcion: 'Listado y análisis de incidencias reportadas',
+    id: 'resumen_sla',
+    nombre: 'Resumen Ejecutivo SLA',
+    descripcion: 'KPIs principales: Disponibilidad, MTTR, Cumplimiento SLA',
+    icono: TrendingUp,
+    color: 'blue',
+    formatos: ['pdf', 'excel'],
+  },
+  {
+    id: 'historico_incidencias',
+    nombre: 'Histórico de Incidencias',
+    descripcion: 'Listado completo con tiempos de respuesta y resolución',
     icono: AlertTriangle,
     color: 'red',
+    formatos: ['excel', 'pdf'],
   },
   {
-    id: 'sla',
-    nombre: 'Cumplimiento SLA',
-    descripcion: 'Análisis de tiempos de respuesta y resolución',
-    icono: Clock,
-    color: 'blue',
-  },
-  {
-    id: 'disponibilidad',
-    nombre: 'Disponibilidad Flota',
-    descripcion: 'Estado y disponibilidad de vehículos',
+    id: 'estado_flota',
+    nombre: 'Estado de la Flota',
+    descripcion: 'Disponibilidad y autobuses con más incidencias',
     icono: Bus,
     color: 'green',
-  },
-  {
-    id: 'inventario',
-    nombre: 'Inventario',
-    descripcion: 'Stock actual, movimientos y valoración',
-    icono: Package,
-    color: 'purple',
-  },
-  {
-    id: 'preventivos',
-    nombre: 'Mantenimientos Preventivos',
-    descripcion: 'Ejecución y cumplimiento de preventivos',
-    icono: Calendar,
-    color: 'amber',
-  },
-  {
-    id: 'tecnicos',
-    nombre: 'Intervenciones Técnicos',
-    descripcion: 'Productividad y trabajos por técnico',
-    icono: Users,
-    color: 'cyan',
-  },
-  {
-    id: 'costes',
-    nombre: 'Análisis de Costes',
-    descripcion: 'Desglose de costes de mantenimiento',
-    icono: TrendingUp,
-    color: 'emerald',
+    formatos: ['pdf', 'excel'],
   },
 ] as const;
 
 type TipoInforme = typeof TIPOS_INFORME[number]['id'];
 
+// =============================================================================
+// COMPONENTE PRINCIPAL
+// =============================================================================
+
 export default function InformesPage() {
-  const { claims } = useAuth();
-  const tenantId = claims?.tenantId as string | undefined;
+  const { claims, canAccessAllTenants, usuario } = useAuth();
+  const tenantId = useTenantId();
+  
+  // Hook de datos
+  const { incidencias, autobuses, loading, error, cargarDatos, limpiar } = useReportData();
+  const { operadores } = useOperadoresList();
 
-  // Estados
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoInforme>('incidencias');
-  const [loading, setLoading] = useState(false);
-  const [generando, setGenerando] = useState(false);
-  const [datosInforme, setDatosInforme] = useState<DatosInforme | null>(null);
-  const [vistaPrevia, setVistaPrevia] = useState(false);
+  // Estados del formulario
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoInforme>('resumen_sla');
+  const [fechaDesde, setFechaDesde] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [fechaHasta, setFechaHasta] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [operadorSeleccionado, setOperadorSeleccionado] = useState<string>('');
+  const [exportando, setExportando] = useState(false);
+  const [datosListos, setDatosListos] = useState(false);
 
-  // Filtros
-  const [fechaDesde, setFechaDesde] = useState(
-    format(startOfMonth(new Date()), 'yyyy-MM-dd')
-  );
-  const [fechaHasta, setFechaHasta] = useState(
-    format(new Date(), 'yyyy-MM-dd')
-  );
-  const [filtroEstado, setFiltroEstado] = useState<string>('todos');
-  const [filtroPrioridad, setFiltroPrioridad] = useState<string>('todos');
+  // Resetear estado cuando cambia el tipo de informe
+  useEffect(() => {
+    setDatosListos(false);
+    limpiar();
+  }, [tipoSeleccionado, limpiar]);
 
   // Presets de fechas
   const aplicarPreset = (preset: string) => {
@@ -118,482 +111,523 @@ export default function InformesPage() {
         setFechaDesde(format(subDays(hoy, 7), 'yyyy-MM-dd'));
         setFechaHasta(format(hoy, 'yyyy-MM-dd'));
         break;
-      case '30dias':
-        setFechaDesde(format(subDays(hoy, 30), 'yyyy-MM-dd'));
-        setFechaHasta(format(hoy, 'yyyy-MM-dd'));
-        break;
       case 'mes_actual':
         setFechaDesde(format(startOfMonth(hoy), 'yyyy-MM-dd'));
-        setFechaHasta(format(endOfMonth(hoy), 'yyyy-MM-dd'));
+        setFechaHasta(format(hoy, 'yyyy-MM-dd'));
         break;
       case 'mes_anterior':
-        const mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+        const mesAnterior = subMonths(hoy, 1);
         setFechaDesde(format(startOfMonth(mesAnterior), 'yyyy-MM-dd'));
         setFechaHasta(format(endOfMonth(mesAnterior), 'yyyy-MM-dd'));
         break;
     }
   };
 
-  // Generar informe
-  const generarInforme = async () => {
-    if (!tenantId) return;
+  // Cargar datos para el informe
+  const handleCargarDatos = async () => {
+    const filtros = {
+      fechaDesde: new Date(fechaDesde),
+      fechaHasta: new Date(fechaHasta + 'T23:59:59'),
+      operadorId: operadorSeleccionado || undefined,
+    };
 
-    setGenerando(true);
+    await cargarDatos(filtros);
+    setDatosListos(true);
+  };
+
+  // Generar filtros para transformación
+  const getFiltros = (): FiltrosInforme => ({
+    fechaDesde: new Date(fechaDesde),
+    fechaHasta: new Date(fechaHasta + 'T23:59:59'),
+    operadorId: operadorSeleccionado || undefined,
+  });
+
+  // Obtener nombre de operador
+  const getNombreOperador = () => {
+    if (!operadorSeleccionado) return undefined;
+    const op = operadores.find(o => o.id === operadorSeleccionado);
+    return op?.nombre;
+  };
+
+  // === EXPORTADORES ===
+
+  const handleExportarExcel = async () => {
+    if (!datosListos) return;
+    setExportando(true);
+    
     try {
-      const filtros: FiltrosInforme = {
-        fechaDesde: new Date(fechaDesde),
-        fechaHasta: new Date(fechaHasta),
-      };
-
-      let datos: DatosInforme;
+      const filtros = getFiltros();
+      const nombreOperador = getNombreOperador();
+      const usuarioNombre = usuario?.nombre ? `${usuario.nombre} ${usuario.apellidos || ''}`.trim() : (usuario?.email || 'Sistema');
 
       switch (tipoSeleccionado) {
-        case 'incidencias':
-          datos = await generarInformeIncidencias(tenantId, filtros);
+        case 'resumen_sla': {
+          const resumen = generarResumenEjecutivoSLA(incidencias, autobuses, filtros, nombreOperador, usuarioNombre);
+          exportarResumenEjecutivoExcel(resumen, {
+            nombreArchivo: `resumen-sla-${format(new Date(), 'yyyy-MM')}`,
+            nombreHoja: 'Resumen SLA',
+          });
           break;
-        case 'sla':
-          datos = await generarInformeSLA(tenantId, filtros);
+        }
+        case 'historico_incidencias': {
+          const filas = incidenciasAFilasExcel(incidencias, nombreOperador);
+          exportarIncidenciasExcel(filas, {
+            nombreArchivo: 'historico-incidencias',
+            nombreHoja: 'Incidencias',
+            incluirResumen: true,
+          });
           break;
-        case 'inventario':
-          datos = await generarInformeInventario(tenantId);
+        }
+        case 'estado_flota': {
+          // Para flota también usamos el resumen ejecutivo con foco en flota
+          const resumen = generarResumenFlota(autobuses, incidencias, filtros, nombreOperador, usuarioNombre);
+          // Usar export genérico ya que no hay específico de flota para Excel
+          exportarResumenEjecutivoExcel(
+            generarResumenEjecutivoSLA(incidencias, autobuses, filtros, nombreOperador, usuarioNombre),
+            {
+              nombreArchivo: `estado-flota-${format(new Date(), 'yyyy-MM')}`,
+              nombreHoja: 'Estado Flota',
+            }
+          );
           break;
-        default:
-          // Mock para otros tipos
-          datos = {
-            titulo: `Informe de ${TIPOS_INFORME.find((t) => t.id === tipoSeleccionado)?.nombre}`,
-            fechaGeneracion: new Date(),
-            periodo: { desde: new Date(fechaDesde), hasta: new Date(fechaHasta) },
-            datos: [],
-            resumen: { total: 0 },
-          };
+        }
       }
-
-      setDatosInforme(datos);
-      setVistaPrevia(true);
-    } catch (error) {
-      console.error('Error generando informe:', error);
+    } catch (err) {
+      console.error('Error exportando Excel:', err);
+      alert('Error al exportar Excel');
     } finally {
-      setGenerando(false);
+      setExportando(false);
     }
   };
 
-  // Exportar a CSV
-  const exportarCSV = () => {
-    if (!datosInforme) return;
+  const handleExportarPDF = async () => {
+    if (!datosListos) return;
+    setExportando(true);
+    
+    try {
+      const filtros = getFiltros();
+      const nombreOperador = getNombreOperador();
+      const usuarioNombre = usuario?.nombre ? `${usuario.nombre} ${usuario.apellidos || ''}`.trim() : (usuario?.email || 'Sistema');
 
-    const headers = Object.keys(datosInforme.datos[0] || {});
-    const csvContent = [
-      headers.join(','),
-      ...datosInforme.datos.map((row) =>
-        headers.map((h) => {
-          const val = (row as Record<string, unknown>)[h];
-          return typeof val === 'string' && val.includes(',') ? `"${val}"` : val;
-        }).join(',')
-      ),
-    ].join('\n');
-
-    descargarArchivo(csvContent, `${datosInforme.titulo}.csv`, 'text/csv');
+      switch (tipoSeleccionado) {
+        case 'resumen_sla': {
+          const resumen = generarResumenEjecutivoSLA(incidencias, autobuses, filtros, nombreOperador, usuarioNombre);
+          await exportarResumenEjecutivoPDF(resumen, {
+            nombreArchivo: `resumen-ejecutivo-sla-${format(new Date(), 'yyyy-MM')}`,
+            titulo: 'Resumen Ejecutivo de SLA',
+            incluirLogo: true,
+          });
+          break;
+        }
+        case 'historico_incidencias': {
+          const filas = incidenciasAFilasExcel(incidencias, nombreOperador);
+          const desde = format(new Date(fechaDesde), 'dd/MM/yyyy');
+          const hasta = format(new Date(fechaHasta), 'dd/MM/yyyy');
+          await exportarIncidenciasPDF(filas, {
+            nombreArchivo: 'listado-incidencias',
+            titulo: 'Histórico de Incidencias',
+            subtitulo: `Período: ${desde} - ${hasta}`,
+            incluirLogo: true,
+            orientacion: 'landscape',
+          });
+          break;
+        }
+        case 'estado_flota': {
+          const resumen = generarResumenFlota(autobuses, incidencias, filtros, nombreOperador, usuarioNombre);
+          await exportarResumenFlotaPDF(resumen, {
+            nombreArchivo: `estado-flota-${format(new Date(), 'yyyy-MM')}`,
+            titulo: 'Estado de la Flota',
+            incluirLogo: true,
+          });
+          break;
+        }
+      }
+    } catch (err) {
+      console.error('Error exportando PDF:', err);
+      alert('Error al exportar PDF');
+    } finally {
+      setExportando(false);
+    }
   };
 
-  // Exportar a JSON
-  const exportarJSON = () => {
-    if (!datosInforme) return;
-
-    const jsonContent = JSON.stringify(datosInforme, null, 2);
-    descargarArchivo(
-      jsonContent,
-      `${datosInforme.titulo}.json`,
-      'application/json'
-    );
+  // Generar reporte mensual rápido
+  const handleReporteMensual = async () => {
+    const hoy = new Date();
+    const mesAnterior = subMonths(hoy, 1);
+    
+    setFechaDesde(format(startOfMonth(mesAnterior), 'yyyy-MM-dd'));
+    setFechaHasta(format(endOfMonth(mesAnterior), 'yyyy-MM-dd'));
+    setTipoSeleccionado('resumen_sla');
+    
+    // Cargar datos y exportar
+    const filtros = {
+      fechaDesde: startOfMonth(mesAnterior),
+      fechaHasta: endOfMonth(mesAnterior),
+      operadorId: operadorSeleccionado || undefined,
+    };
+    
+    setExportando(true);
+    try {
+      await cargarDatos(filtros);
+      setDatosListos(true);
+      
+      // Esperar un poco para que los datos se actualicen
+      setTimeout(async () => {
+        const nombreOperador = getNombreOperador();
+        const usuarioNombre = usuario?.nombre ? `${usuario.nombre} ${usuario.apellidos || ''}`.trim() : (usuario?.email || 'Sistema');
+        const resumen = generarResumenEjecutivoSLA(incidencias, autobuses, filtros, nombreOperador, usuarioNombre);
+        await exportarResumenEjecutivoPDF(resumen, {
+          nombreArchivo: `reporte-mensual-${format(mesAnterior, 'yyyy-MM')}`,
+          titulo: `Reporte Mensual - ${format(mesAnterior, 'MMMM yyyy', { locale: es })}`,
+          incluirLogo: true,
+        });
+        setExportando(false);
+      }, 1000);
+    } catch (err) {
+      setExportando(false);
+      console.error('Error generando reporte mensual:', err);
+    }
   };
 
-  // Exportar a Excel (simulado como CSV con formato)
-  const exportarExcel = () => {
-    if (!datosInforme) return;
-
-    const headers = Object.keys(datosInforme.datos[0] || {});
-    const csvContent = [
-      headers.join('\t'),
-      ...datosInforme.datos.map((row) =>
-        headers.map((h) => (row as Record<string, unknown>)[h]).join('\t')
-      ),
-    ].join('\n');
-
-    descargarArchivo(
-      csvContent,
-      `${datosInforme.titulo}.xls`,
-      'application/vnd.ms-excel'
-    );
-  };
-
-  // Helper para descargar archivos
-  const descargarArchivo = (
-    contenido: string,
-    nombre: string,
-    tipo: string
-  ) => {
-    const blob = new Blob([contenido], { type: tipo });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = nombre;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // Generar PDF (placeholder)
-  const exportarPDF = () => {
-    alert('Exportación PDF disponible próximamente');
-  };
-
-  const tipoActual = TIPOS_INFORME.find((t) => t.id === tipoSeleccionado);
+  const tipoActual = TIPOS_INFORME.find(t => t.id === tipoSeleccionado);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Generador de Informes
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Crea informes personalizados con filtros y exportación
-          </p>
-        </div>
+    <RequirePermission permission="sla:ver" fallback={
+      <div className="p-6 text-center">
+        <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-slate-800 mb-2">Acceso Restringido</h2>
+        <p className="text-slate-600">No tienes permisos para acceder al módulo de informes.</p>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Panel izquierdo: Tipos de informe */}
-        <div className="lg:col-span-1 space-y-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-700">
-                Tipo de Informe
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {TIPOS_INFORME.map((tipo) => {
-                const Icon = tipo.icono;
-                const isSelected = tipoSeleccionado === tipo.id;
-
-                return (
-                  <button
-                    key={tipo.id}
-                    className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-all ${
-                      isSelected
-                        ? 'bg-blue-50 border border-blue-200'
-                        : 'bg-slate-50 hover:bg-slate-100 border border-transparent'
-                    }`}
-                    onClick={() => {
-                      setTipoSeleccionado(tipo.id);
-                      setVistaPrevia(false);
-                      setDatosInforme(null);
-                    }}
-                  >
-                    <div
-                      className={`p-2 rounded-lg ${
-                        isSelected ? 'bg-blue-100' : 'bg-white'
-                      }`}
-                    >
-                      <Icon
-                        className={`h-4 w-4 ${
-                          isSelected ? 'text-blue-600' : 'text-slate-400'
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <p
-                        className={`text-sm font-medium ${
-                          isSelected ? 'text-blue-800' : 'text-slate-700'
-                        }`}
-                      >
-                        {tipo.nombre}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {tipo.descripcion}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </CardContent>
-          </Card>
+    }>
+      <div className="space-y-6 p-4 sm:p-6 bg-slate-900 min-h-screen">
+        {/* Header */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Centro de Informes</h1>
+            <p className="text-slate-400 mt-1">
+              Genera y exporta informes de SLA, incidencias y estado de flota
+            </p>
+          </div>
+          
+          <div className="flex gap-3">
+            <Button 
+              onClick={handleReporteMensual}
+              disabled={exportando || loading}
+              className="bg-cyan-600 hover:bg-cyan-700"
+            >
+              {exportando ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Calendar className="w-4 h-4 mr-2" />
+              )}
+              Reporte Mensual
+            </Button>
+          </div>
         </div>
 
-        {/* Panel central/derecho: Configuración y vista previa */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Filtros */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-slate-400" />
-                  Filtros del Informe: {tipoActual?.nombre}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Panel izquierdo: Tipos de informe */}
+          <div className="lg:col-span-1 space-y-4">
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-slate-300">
+                  Tipo de Informe
                 </CardTitle>
-                <div className="flex gap-1">
-                  {['hoy', '7dias', '30dias', 'mes_actual', 'mes_anterior'].map(
-                    (preset) => (
-                      <Button
-                        key={preset}
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-7"
-                        onClick={() => aplicarPreset(preset)}
-                      >
-                        {preset === 'hoy'
-                          ? 'Hoy'
-                          : preset === '7dias'
-                          ? '7 días'
-                          : preset === '30dias'
-                          ? '30 días'
-                          : preset === 'mes_actual'
-                          ? 'Este mes'
-                          : 'Mes anterior'}
-                      </Button>
-                    )
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Fecha desde */}
-                <div className="space-y-2">
-                  <label htmlFor="fechaDesde" className="text-sm font-medium text-slate-300">
-                    Fecha desde
-                  </label>
-                  <Input
-                    id="fechaDesde"
-                    type="date"
-                    value={fechaDesde}
-                    onChange={(e) => setFechaDesde(e.target.value)}
-                  />
-                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {TIPOS_INFORME.map((tipo) => {
+                  const Icon = tipo.icono;
+                  const isSelected = tipoSeleccionado === tipo.id;
 
-                {/* Fecha hasta */}
-                <div className="space-y-2">
-                  <label htmlFor="fechaHasta" className="text-sm font-medium text-slate-300">
-                    Fecha hasta
-                  </label>
-                  <Input
-                    id="fechaHasta"
-                    type="date"
-                    value={fechaHasta}
-                    onChange={(e) => setFechaHasta(e.target.value)}
-                  />
-                </div>
+                  return (
+                    <button
+                      key={tipo.id}
+                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-all ${
+                        isSelected
+                          ? 'bg-cyan-500/20 border border-cyan-500/50'
+                          : 'bg-slate-700/30 hover:bg-slate-700/50 border border-transparent'
+                      }`}
+                      onClick={() => setTipoSeleccionado(tipo.id)}
+                    >
+                      <div className={`p-2 rounded-lg ${isSelected ? 'bg-cyan-500/20' : 'bg-slate-700'}`}>
+                        <Icon className={`w-4 h-4 ${isSelected ? 'text-cyan-400' : 'text-slate-400'}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-medium text-sm ${isSelected ? 'text-cyan-400' : 'text-slate-200'}`}>
+                          {tipo.nombre}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">{tipo.descripcion}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
 
-                {/* Filtro específico según tipo */}
-                {tipoSeleccionado === 'incidencias' && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-300">Estado</label>
-                      <Select
-                        value={filtroEstado}
-                        onChange={setFiltroEstado}
-                        options={[
-                          { value: 'todos', label: 'Todos' },
-                          { value: 'nueva', label: 'Nueva' },
-                          { value: 'en_analisis', label: 'En análisis' },
-                          { value: 'en_intervencion', label: 'En intervención' },
-                          { value: 'resuelta', label: 'Resuelta' },
-                          { value: 'cerrada', label: 'Cerrada' },
-                        ]}
-                        placeholder="Todos"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-300">Criticidad</label>
-                      <Select
-                        value={filtroPrioridad}
-                        onChange={setFiltroPrioridad}
-                        options={[
-                          { value: 'todos', label: 'Todas' },
-                          { value: 'critica', label: 'Crítica' },
-                          { value: 'normal', label: 'Normal' },
-                        ]}
-                        placeholder="Todas"
-                      />
-                    </div>
-                  </>
+            {/* Formatos disponibles */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-slate-300">
+                  Formatos Disponibles
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex gap-2">
+                {tipoActual?.formatos.includes('pdf') && (
+                  <Badge variant="outline" className="text-red-400 border-red-400/30">
+                    <FileText className="w-3 h-3 mr-1" /> PDF
+                  </Badge>
                 )}
+                {tipoActual?.formatos.includes('excel') && (
+                  <Badge variant="outline" className="text-green-400 border-green-400/30">
+                    <FileSpreadsheet className="w-3 h-3 mr-1" /> Excel
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-                {tipoSeleccionado === 'sla' && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-300">Tipo OT</label>
-                    <Select
-                      value={filtroEstado}
-                      onChange={setFiltroEstado}
-                      options={[
-                        { value: 'todos', label: 'Todos' },
-                        { value: 'correctivo', label: 'Correctivo' },
-                        { value: 'preventivo', label: 'Preventivo' },
-                      ]}
-                      placeholder="Todos"
+          {/* Panel central/derecho: Filtros y acciones */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Filtros */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-base font-medium text-slate-200 flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  Filtros del Informe
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Presets de fecha */}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => aplicarPreset('hoy')}>
+                    Hoy
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => aplicarPreset('7dias')}>
+                    Últimos 7 días
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => aplicarPreset('mes_actual')}>
+                    Mes actual
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => aplicarPreset('mes_anterior')}>
+                    Mes anterior
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Fecha desde */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-1">Desde</label>
+                    <Input
+                      type="date"
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                      className="bg-slate-700 border-slate-600 text-white"
                     />
                   </div>
-                )}
-              </div>
-
-              {/* Botón generar */}
-              <div className="flex justify-end mt-4">
-                <Button onClick={generarInforme} disabled={generando}>
-                  {generando ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generando...
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="h-4 w-4 mr-2" />
-                      Generar Vista Previa
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Vista previa del informe */}
-          {vistaPrevia && datosInforme && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
+                  
+                  {/* Fecha hasta */}
                   <div>
-                    <CardTitle className="text-lg font-semibold text-slate-900">
-                      {datosInforme.titulo}
-                    </CardTitle>
-                    <p className="text-sm text-slate-500 mt-1">
-                      Período: {format(datosInforme.periodo.desde, "dd/MM/yyyy", { locale: es })} -{' '}
-                      {format(datosInforme.periodo.hasta, "dd/MM/yyyy", { locale: es })}
-                    </p>
+                    <label className="block text-sm font-medium text-slate-400 mb-1">Hasta</label>
+                    <Input
+                      type="date"
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                      className="bg-slate-700 border-slate-600 text-white"
+                    />
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={exportarCSV}>
-                      <FileText className="h-4 w-4 mr-1" />
-                      CSV
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={exportarExcel}>
-                      <FileSpreadsheet className="h-4 w-4 mr-1" />
-                      Excel
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={exportarJSON}>
-                      <FileJson className="h-4 w-4 mr-1" />
-                      JSON
-                    </Button>
-                    <Button size="sm" onClick={exportarPDF}>
-                      <Download className="h-4 w-4 mr-1" />
-                      PDF
-                    </Button>
-                  </div>
+
+                  {/* Selector de operador (solo para DFG) */}
+                  {canAccessAllTenants && operadores.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-1">
+                        <Building2 className="w-4 h-4 inline mr-1" />
+                        Operador
+                      </label>
+                      <select
+                        value={operadorSeleccionado}
+                        onChange={(e) => setOperadorSeleccionado(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white text-sm"
+                      >
+                        <option value="">Todos los operadores</option>
+                        {operadores.map(op => (
+                          <option key={op.id} value={op.id}>{op.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
+
+                {/* Botón cargar datos */}
+                <div className="flex gap-3 pt-2">
+                  <Button 
+                    onClick={handleCargarDatos} 
+                    disabled={loading}
+                    className="bg-slate-700 hover:bg-slate-600"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Eye className="w-4 h-4 mr-2" />
+                    )}
+                    Cargar Datos
+                  </Button>
+
+                  {datosListos && (
+                    <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      {incidencias.length} incidencias, {autobuses.length} autobuses
+                    </Badge>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="flex items-center gap-2 text-red-400 text-sm">
+                    <XCircle className="w-4 h-4" />
+                    {error}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Vista previa de KPIs */}
+            {datosListos && (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader>
+                  <CardTitle className="text-base font-medium text-slate-200">
+                    Vista Previa - {tipoActual?.nombre}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResumenPrevia 
+                    incidencias={incidencias} 
+                    autobuses={autobuses}
+                    filtros={getFiltros()}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Acciones de exportación */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-base font-medium text-slate-200 flex items-center gap-2">
+                  <Download className="w-4 h-4 text-slate-400" />
+                  Exportar Informe
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Resumen */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  {Object.entries(datosInforme.resumen).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="text-center p-3 bg-slate-50 rounded-lg"
+                <div className="flex flex-wrap gap-3">
+                  {tipoActual?.formatos.includes('excel') && (
+                    <Button
+                      onClick={handleExportarExcel}
+                      disabled={!datosListos || exportando}
+                      className="bg-green-600 hover:bg-green-700"
                     >
-                      <div className="text-2xl font-bold text-slate-900">
-                        {typeof value === 'number' ? value.toLocaleString('es-ES') : value}
-                      </div>
-                      <div className="text-xs text-slate-500 capitalize">
-                        {key.replace(/_/g, ' ')}
-                      </div>
-                    </div>
-                  ))}
+                      {exportando ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileSpreadsheet className="w-4 h-4 mr-2" />
+                      )}
+                      Exportar Excel
+                    </Button>
+                  )}
+                  
+                  {tipoActual?.formatos.includes('pdf') && (
+                    <Button
+                      onClick={handleExportarPDF}
+                      disabled={!datosListos || exportando}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {exportando ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileDown className="w-4 h-4 mr-2" />
+                      )}
+                      Exportar PDF
+                    </Button>
+                  )}
                 </div>
 
-                {/* Tabla de datos */}
-                {datosInforme.datos.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          {Object.keys(datosInforme.datos[0])
-                            .filter((k) => !k.startsWith('auditoria'))
-                            .slice(0, 6)
-                            .map((header) => (
-                              <th
-                                key={header}
-                                className="text-left py-2 px-3 font-medium text-slate-600 capitalize"
-                              >
-                                {header.replace(/_/g, ' ')}
-                              </th>
-                            ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {datosInforme.datos.slice(0, 10).map((row, index) => (
-                          <tr
-                            key={index}
-                            className="border-b border-slate-100 hover:bg-slate-50"
-                          >
-                            {Object.entries(row)
-                              .filter(([k]) => !k.startsWith('auditoria'))
-                              .slice(0, 6)
-                              .map(([key, value], i) => (
-                                <td key={i} className="py-2 px-3 text-slate-700">
-                                  {typeof value === 'object'
-                                    ? JSON.stringify(value).slice(0, 30) + '...'
-                                    : String(value).slice(0, 30)}
-                                </td>
-                              ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {datosInforme.datos.length > 10 && (
-                      <p className="text-sm text-slate-500 text-center mt-3">
-                        Mostrando 10 de {datosInforme.datos.length} registros.
-                        Exporta para ver todos.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-slate-500">
-                    No se encontraron datos para los filtros seleccionados
-                  </div>
-                )}
-
-                {/* Metadatos del informe */}
-                <div className="mt-6 pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>
-                      Generado: {format(datosInforme.fechaGeneracion, "dd/MM/yyyy HH:mm:ss", { locale: es })}
-                    </span>
-                    <span>
-                      Total registros: {datosInforme.datos.length}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Placeholder cuando no hay informe */}
-          {!vistaPrevia && (
-            <Card className="border-dashed">
-              <CardContent className="py-16">
-                <div className="text-center">
-                  <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-slate-600 mb-2">
-                    Configura los filtros y genera el informe
-                  </h3>
-                  <p className="text-sm text-slate-400 max-w-md mx-auto">
-                    Selecciona el tipo de informe, ajusta los filtros según tus
-                    necesidades y haz clic en &quot;Generar Vista Previa&quot; para ver los
-                    datos antes de exportar.
+                {!datosListos && (
+                  <p className="text-sm text-slate-500 mt-3">
+                    Primero carga los datos usando el botón "Cargar Datos"
                   </p>
-                </div>
+                )}
               </CardContent>
             </Card>
-          )}
+          </div>
         </div>
+      </div>
+    </RequirePermission>
+  );
+}
+
+// =============================================================================
+// COMPONENTE DE VISTA PREVIA
+// =============================================================================
+
+import type { Incidencia, Autobus } from '@/types';
+import { calcularMTTR } from '@/lib/logic/reports';
+import { verificarEstadoSLA } from '@/lib/logic/sla';
+
+interface ResumenPreviaProps {
+  incidencias: Incidencia[];
+  autobuses: Autobus[];
+  filtros: FiltrosInforme;
+}
+
+function ResumenPrevia({ incidencias, autobuses, filtros }: ResumenPreviaProps) {
+  // Calcular KPIs
+  const flotaTotal = autobuses.length;
+  const flotaOperativa = autobuses.filter(a => a.estado === 'operativo').length;
+  const disponibilidad = flotaTotal > 0 ? Math.round((flotaOperativa / flotaTotal) * 100) : 0;
+
+  const incidenciasResueltas = incidencias.filter(i => i.estado === 'resuelta' || i.estado === 'cerrada');
+  const incidenciasCriticas = incidencias.filter(i => i.criticidad === 'critica');
+
+  // Calcular cumplimiento SLA
+  const toDate = (ts: any): Date | null => {
+    if (!ts) return null;
+    if (ts instanceof Date) return ts;
+    if (typeof ts.toDate === 'function') return ts.toDate();
+    return null;
+  };
+
+  let dentroDeSLA = 0;
+  incidencias.forEach(inc => {
+    const recepcion = toDate(inc.timestamps?.recepcion);
+    const fechaResolucion = toDate(inc.timestamps?.finReparacion) || toDate(inc.timestamps?.cierre);
+    if (recepcion && inc.criticidad) {
+      const resultado = verificarEstadoSLA(recepcion, fechaResolucion, inc.criticidad);
+      if (resultado.dentroSLA) dentroDeSLA++;
+    }
+  });
+
+  const cumplimientoSLA = incidencias.length > 0 
+    ? Math.round((dentroDeSLA / incidencias.length) * 100) 
+    : 100;
+
+  // MTTR
+  const mttr = calcularMTTR(incidenciasResueltas);
+  const mttrTexto = mttr !== null ? formatMinutosAHoras(mttr) : '-';
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-slate-700/30 rounded-lg p-4 text-center">
+        <p className="text-2xl font-bold text-green-400">{disponibilidad}%</p>
+        <p className="text-xs text-slate-400">Disponibilidad Flota</p>
+      </div>
+      <div className="bg-slate-700/30 rounded-lg p-4 text-center">
+        <p className="text-2xl font-bold text-cyan-400">{cumplimientoSLA}%</p>
+        <p className="text-xs text-slate-400">Cumplimiento SLA</p>
+      </div>
+      <div className="bg-slate-700/30 rounded-lg p-4 text-center">
+        <p className="text-2xl font-bold text-amber-400">{mttrTexto}</p>
+        <p className="text-xs text-slate-400">MTTR (laborable)</p>
+      </div>
+      <div className="bg-slate-700/30 rounded-lg p-4 text-center">
+        <p className="text-2xl font-bold text-red-400">{incidenciasCriticas.length}</p>
+        <p className="text-xs text-slate-400">Inc. Críticas</p>
       </div>
     </div>
   );

@@ -884,6 +884,8 @@ export interface UbicacionActualEquipo {
   id: DocumentId;
   /** Nombre/código denormalizado para UI. */
   nombre: string;
+  /** Matrícula del bus (solo si tipo === 'autobus'). */
+  matricula?: string;
   /** Posición en el autobús (si aplica). */
   posicionEnBus?: string;
 }
@@ -969,6 +971,8 @@ export interface Equipo {
   garantia?: GarantiaEquipo;
   /** Estadísticas desnormalizadas. */
   estadisticas: EstadisticasEquipo;
+  /** Tags de negocio (ej: cableado_reforzado, requiere_atencion). */
+  tags?: string[];
   /** Metadatos de auditoría. */
   auditoria: Auditoria;
   /** Términos para búsqueda full-text. */

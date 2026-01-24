@@ -41,6 +41,7 @@ import {
   AlertTriangle,
   Trash2,
   Loader2,
+  ArrowRightLeft,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
@@ -144,6 +145,7 @@ export default function EquiposPage() {
   // Modal states
   const [equipoToMove, setEquipoToMove] = React.useState<Equipo | null>(null);
   const [equipoToDelete, setEquipoToDelete] = React.useState<Equipo | null>(null);
+  const [equipoToReportAveria, setEquipoToReportAveria] = React.useState<Equipo | null>(null);
 
   // Load tipos y resumen (solo al inicio)
   React.useEffect(() => {
@@ -252,6 +254,90 @@ export default function EquiposPage() {
     success('Función de exportación en desarrollo');
   };
 
+  // Handler para reportar avería (quick action)
+  const handleReportarAveria = async () => {
+    if (!equipoToReportAveria) return;
+    
+    try {
+      // Cambiar estado a averiado
+      // TODO: Crear incidencia asociada
+      await darDeBajaEquipo(
+        equipoToReportAveria.id,
+        'Avería reportada desde listado',
+        'user-id' // TODO: Get from auth context
+      );
+      success(`Equipo ${equipoToReportAveria.codigoInterno} marcado como averiado`);
+      setEquipoToReportAveria(null);
+      refetch();
+      refreshStats();
+    } catch (err) {
+      showError('Error al reportar avería');
+    }
+  };
+
+  // Renderizar ubicación con badge especial para buses
+  const renderUbicacionCell = (equipo: Equipo) => {
+    const { ubicacionActual } = equipo;
+    
+    if (ubicacionActual.tipo === 'autobus') {
+      return (
+        <div className="flex items-center gap-2">
+          <Bus className="h-4 w-4 text-cyan-400" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/30 rounded text-sm">
+            <span className="text-cyan-400 font-medium">[{ubicacionActual.nombre}]</span>
+            {ubicacionActual.matricula && (
+              <span className="text-white">{ubicacionActual.matricula}</span>
+            )}
+          </span>
+          {ubicacionActual.posicionEnBus && (
+            <span className="text-xs text-slate-500 bg-slate-700 px-1.5 py-0.5 rounded">
+              {ubicacionActual.posicionEnBus}
+            </span>
+          )}
+        </div>
+      );
+    }
+    
+    return (
+      <div className="flex items-center gap-2">
+        {ubicacionActual.tipo === 'laboratorio' ? (
+          <Wrench className="h-4 w-4 text-amber-400" />
+        ) : (
+          <Warehouse className="h-4 w-4 text-slate-500" />
+        )}
+        <span>{ubicacionActual.nombre}</span>
+      </div>
+    );
+  };
+
+  // Renderizar "Power Fields" según tipo de equipo
+  const renderPowerFieldsCell = (equipo: Equipo) => {
+    const tipoNombre = (equipo.tipoEquipoNombre || '').toLowerCase();
+    
+    // IP para CPUs/Routers
+    if ((tipoNombre.includes('cpu') || tipoNombre.includes('router') || tipoNombre.includes('sae')) && equipo.red?.ip) {
+      return (
+        <span className="text-green-400 font-mono text-xs">{equipo.red.ip}</span>
+      );
+    }
+    
+    // Teléfono para SIMs
+    if (equipo.sim?.telefono) {
+      return (
+        <span className="text-blue-400 font-mono text-xs">{equipo.sim.telefono}</span>
+      );
+    }
+    
+    // Firmware como fallback
+    if (equipo.caracteristicas?.firmware) {
+      return (
+        <span className="text-slate-400 text-xs">FW: {equipo.caracteristicas.firmware}</span>
+      );
+    }
+    
+    return <span className="text-slate-500">-</span>;
+  };
+
   // Table columns
   const columns: Column<Equipo>[] = [
     {
@@ -275,38 +361,26 @@ export default function EquiposPage() {
       sortable: true,
     },
     {
+      id: 'powerField',
+      header: 'IP / Teléfono',
+      accessor: (equipo) => equipo.red?.ip || equipo.sim?.telefono || '-',
+      cell: renderPowerFieldsCell,
+    },
+    {
       id: 'numeroSerie',
       header: 'Nº Serie',
       accessor: 'numeroSerieFabricante',
       cell: (equipo) => (
-        <span className="text-slate-400">
+        <span className="text-slate-400 font-mono text-xs">
           {equipo.numeroSerieFabricante || '-'}
         </span>
       ),
     },
     {
-      id: 'marca',
-      header: 'Marca/Modelo',
-      accessor: (equipo) =>
-        equipo.caracteristicas?.marca
-          ? `${equipo.caracteristicas.marca} ${equipo.caracteristicas.modelo || ''}`
-          : '-',
-    },
-    {
       id: 'ubicacion',
       header: 'Ubicación',
       accessor: (equipo) => equipo.ubicacionActual.nombre,
-      cell: (equipo) => (
-        <div className="flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-slate-500" />
-          <span>{equipo.ubicacionActual.nombre}</span>
-          {equipo.ubicacionActual.posicionEnBus && (
-            <span className="text-xs text-slate-500">
-              ({equipo.ubicacionActual.posicionEnBus})
-            </span>
-          )}
-        </div>
-      ),
+      cell: renderUbicacionCell,
     },
     {
       id: 'estado',
@@ -416,16 +490,30 @@ export default function EquiposPage() {
             onRowClick={(equipo) => router.push(`/equipos/${equipo.id}`)}
             actions={(equipo) => (
               <div className="flex items-center gap-1">
+                {/* Quick Action: Mover */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setEquipoToMove(equipo);
                   }}
-                  className="p-1.5 text-slate-400 hover:text-white rounded"
-                  title="Mover"
+                  className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-700 rounded transition-colors"
+                  title="Mover equipo"
                 >
-                  <MapPin className="h-4 w-4" />
+                  <ArrowRightLeft className="h-4 w-4" />
                 </button>
+                {/* Quick Action: Reportar Avería */}
+                {equipo.estado !== ESTADOS_EQUIPO.AVERIADO && equipo.estado !== ESTADOS_EQUIPO.BAJA && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEquipoToReportAveria(equipo);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-700 rounded transition-colors"
+                    title="Reportar avería"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             )}
           />
@@ -457,6 +545,7 @@ export default function EquiposPage() {
                 onEdit={(e) => router.push(`/equipos/${e.id}/editar`)}
                 onMove={setEquipoToMove}
                 onDelete={setEquipoToDelete}
+                onReportarAveria={setEquipoToReportAveria}
               />
             ))}
           </CardGrid>
@@ -495,6 +584,17 @@ export default function EquiposPage() {
         message={`¿Estás seguro de que quieres dar de baja el equipo ${equipoToDelete?.codigoInterno}? Esta acción quedará registrada.`}
         variant="danger"
         confirmText="Dar de baja"
+      />
+
+      {/* Modal Reportar Avería (Quick Action) */}
+      <ConfirmDialog
+        isOpen={!!equipoToReportAveria}
+        onClose={() => setEquipoToReportAveria(null)}
+        onConfirm={handleReportarAveria}
+        title="Reportar avería"
+        message={`¿Confirmas que el equipo ${equipoToReportAveria?.codigoInterno} está averiado? Se creará una incidencia automática.`}
+        variant="warning"
+        confirmText="Confirmar avería"
       />
     </div>
   );

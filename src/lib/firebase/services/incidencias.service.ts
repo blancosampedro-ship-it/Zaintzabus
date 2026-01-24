@@ -11,7 +11,10 @@ import {
 import type { Incidencia, EstadoIncidencia, Criticidad } from '@/types';
 import { BaseFirestoreService, type ServiceContext } from '@/lib/firebase/services/base';
 import { FirestoreServiceError } from '@/lib/firebase/services/errors';
-import { TRANSICIONES_ESTADO } from '@/types';
+
+// Lógica pura - sin dependencias de Firebase
+import { generarCodigoIncidencia, extraerCorrelativo } from '@/lib/logic/codigos';
+import { esTransicionValidaIncidencia } from '@/lib/logic/estados';
 
 export class IncidenciasService extends BaseFirestoreService<Incidencia> {
   constructor(db: Firestore) {
@@ -21,12 +24,17 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
     });
   }
 
+  /**
+   * Obtiene el último correlativo de incidencias del año actual.
+   * Firebase se encarga de leer, la lógica pura genera el código.
+   */
   private async generarCodigo(ctx: ServiceContext): Promise<string> {
     if (!ctx.tenantId) throw new FirestoreServiceError('invalid-argument', 'tenantId requerido');
 
     const year = new Date().getFullYear();
     const prefix = `INC-${year}-`;
 
+    // Firebase: obtener último código
     const q = query(
       collection(this.db, `tenants/${ctx.tenantId}/incidencias`),
       where('codigo', '>=', prefix),
@@ -36,16 +44,23 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
     );
 
     const snap = await getDocs(q);
-    if (snap.empty) return `${prefix}00001`;
+    
+    // Lógica pura: generar el siguiente código
+    if (snap.empty) {
+      return generarCodigoIncidencia(1, year);
+    }
 
-    const last = (snap.docs[0].data() as any).codigo as string;
-    const lastNumber = parseInt(last.split('-')[2], 10);
-    const next = String(lastNumber + 1).padStart(5, '0');
-    return `${prefix}${next}`;
+    const lastCodigo = (snap.docs[0].data() as Incidencia).codigo;
+    const lastCorrelativo = extraerCorrelativo(lastCodigo) ?? 0;
+    return generarCodigoIncidencia(lastCorrelativo + 1, year);
   }
 
   async createConCodigo(ctx: ServiceContext, data: Omit<Incidencia, 'id' | 'codigo' | 'createdAt' | 'updatedAt' | 'timestamps' | 'sla' | 'estado'>): Promise<string> {
     const codigo = await this.generarCodigo(ctx);
+
+    // Nota: Los vencimientos SLA se calculan bajo demanda con calcularVencimientoSLA()
+    // No se almacenan en el documento para evitar datos desactualizados.
+    // Ver: src/lib/logic/sla.ts
 
     const incidencia: Omit<Incidencia, 'id'> = {
       ...(data as any),
@@ -66,13 +81,13 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
     const incidencia = await this.getById(ctx, incidenciaId);
     if (!incidencia) throw new FirestoreServiceError('not-found', 'Incidencia no encontrada');
 
-    const validas = TRANSICIONES_ESTADO[incidencia.estado];
-    if (!validas.includes(nuevoEstado)) {
+    // Lógica pura: validar transición
+    if (!esTransicionValidaIncidencia(incidencia.estado, nuevoEstado)) {
       throw new FirestoreServiceError('failed-precondition', `Transición de ${incidencia.estado} a ${nuevoEstado} no permitida`);
     }
 
+    // Firebase: timestamps automáticos por fase
     const timestampPatch: Record<string, unknown> = {};
-    // timestamps automáticos por fase
     switch (nuevoEstado) {
       case 'en_analisis':
         timestampPatch['timestamps.inicioAnalisis'] = serverTimestamp();
@@ -91,6 +106,7 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
         break;
     }
 
+    // Firebase: persistir cambio
     await this.updatePartial(ctx, incidenciaId, {
       estado: nuevoEstado,
       ...(observaciones ? { observaciones } : {}),

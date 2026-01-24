@@ -6,6 +6,7 @@ import { IncidenciasService, type ServiceContext } from '@/lib/firebase/services
 import { useTenantId } from '@/contexts/OperadorContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificaciones } from '@/contexts/NotificacionesContext';
+import { ETIQUETAS_ESTADO_INCIDENCIA } from '@/lib/logic';
 import type { EstadoIncidencia } from '@/types';
 
 interface UseCambiarEstadoIncidenciaResult {
@@ -57,15 +58,8 @@ export function useCambiarEstadoIncidencia(): UseCambiarEstadoIncidenciaResult {
         const service = new IncidenciasService(db);
         await service.cambiarEstado(ctx, incidenciaId, nuevoEstado, observacion);
 
-        const etiquetasEstado: Record<EstadoIncidencia, string> = {
-          nueva: 'Nueva',
-          en_analisis: 'En análisis',
-          en_intervencion: 'En intervención',
-          resuelta: 'Resuelta',
-          cerrada: 'Cerrada',
-          reabierta: 'Reabierta',
-        };
-        success(`Incidencia marcada como "${etiquetasEstado[nuevoEstado]}"`);
+        // Etiquetas desde lógica pura centralizada
+        success(`Incidencia marcada como "${ETIQUETAS_ESTADO_INCIDENCIA[nuevoEstado]}"`);
         return true;
       } catch (err: any) {
         console.error('Error en useCambiarEstadoIncidencia:', err);

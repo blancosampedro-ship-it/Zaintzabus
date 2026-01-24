@@ -51,6 +51,38 @@ export const PERMISOS_TRANSICION_INCIDENCIA: Record<string, Rol[]> = {
 };
 
 /**
+ * Etiquetas legibles para estados de incidencia (UI).
+ */
+export const ETIQUETAS_ESTADO_INCIDENCIA: Record<EstadoIncidencia, string> = {
+  nueva: 'Nueva',
+  en_analisis: 'En análisis',
+  en_intervencion: 'En intervención',
+  resuelta: 'Resuelta',
+  cerrada: 'Cerrada',
+  reabierta: 'Reabierta',
+};
+
+/**
+ * Etiquetas legibles para estados de inventario (UI).
+ */
+export const ETIQUETAS_ESTADO_INVENTARIO: Record<EstadoInventario, string> = {
+  instalado: 'Instalado',
+  almacen: 'En almacén',
+  reparacion: 'En reparación',
+  baja: 'Baja',
+};
+
+/**
+ * Etiquetas legibles para estados de activo (UI).
+ */
+export const ETIQUETAS_ESTADO_ACTIVO: Record<EstadoActivo, string> = {
+  operativo: 'Operativo',
+  en_taller: 'En taller',
+  averiado: 'Averiado',
+  baja: 'Baja',
+};
+
+/**
  * Verifica si una transición de estado es válida.
  * 
  * @param estadoActual - Estado actual de la incidencia

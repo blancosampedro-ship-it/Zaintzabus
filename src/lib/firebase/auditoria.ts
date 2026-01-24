@@ -31,10 +31,23 @@ export interface CreateAuditLogParams {
 }
 
 export async function createAuditLog(params: CreateAuditLogParams): Promise<string> {
-  const auditLog = {
-    ...params,
+  // Filtrar campos undefined para evitar errores de Firestore
+  const auditLog: Record<string, unknown> = {
+    entidad: params.entidad,
+    entidadId: params.entidadId,
+    accion: params.accion,
+    usuarioId: params.usuarioId,
+    usuarioEmail: params.usuarioEmail,
+    usuarioRol: params.usuarioRol,
+    tenantId: params.tenantId,
+    cambios: params.cambios,
     timestamp: serverTimestamp(),
   };
+  
+  // Solo agregar motivoCambio si tiene valor
+  if (params.motivoCambio) {
+    auditLog.motivoCambio = params.motivoCambio;
+  }
 
   const docRef = await addDoc(auditCollectionRef(params.tenantId), auditLog);
 

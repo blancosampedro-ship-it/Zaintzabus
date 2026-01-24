@@ -302,6 +302,11 @@ export function EquiposList({
                 {equipo.codigoInterno}
               </button>
               <p className="text-xs text-slate-400">{equipo.tipoEquipoNombre}</p>
+              {equipo.numeroSerieFabricante && (
+                <p className="text-xs text-slate-500">
+                  S/N: <span className="font-mono text-slate-400">{equipo.numeroSerieFabricante}</span>
+                </p>
+              )}
               {equipo.ubicacionActual.posicionEnBus && (
                 <p className="text-xs text-slate-500">
                   📍 {POSICIONES_BUS_LABELS[equipo.ubicacionActual.posicionEnBus as keyof typeof POSICIONES_BUS_LABELS] || equipo.ubicacionActual.posicionEnBus}

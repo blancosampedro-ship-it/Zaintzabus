@@ -309,7 +309,10 @@ export async function getEstadisticasIncidencias(
   let countResueltas = 0;
 
   incidencias.forEach((inc) => {
-    porEstado[inc.estado]++;
+    // Proteger contra estados no válidos
+    if (inc.estado && porEstado[inc.estado] !== undefined) {
+      porEstado[inc.estado]++;
+    }
 
     if (['nueva', 'en_analisis', 'en_intervencion', 'reabierta'].includes(inc.estado)) {
       abiertas++;

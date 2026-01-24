@@ -38,17 +38,19 @@ const TIPOS_EQUIPO_COLLECTION = 'tipos_equipo';
 // ============================================
 
 export async function getTiposEquipo(): Promise<TipoEquipo[]> {
+  // Obtener todos y filtrar en cliente para evitar índice compuesto
   const q = query(
     collection(db, TIPOS_EQUIPO_COLLECTION),
-    where('activo', '==', true),
     orderBy('nombre', 'asc')
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({
+  const tipos = snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
   })) as TipoEquipo[];
+  
+  return tipos.filter((tipo) => tipo.activo !== false);
 }
 
 export async function getTipoEquipoById(tipoId: string): Promise<TipoEquipo | null> {
@@ -170,33 +172,46 @@ export async function getEquipoByCodigoInterno(codigo: string): Promise<Equipo |
 }
 
 export async function getEquiposByAutobus(autobusId: string): Promise<Equipo[]> {
+  // Normalizar el ID del autobús - puede venir como "321" o "BUS-321"
+  const busId = autobusId.startsWith('BUS-') ? autobusId : `BUS-${autobusId}`;
+  
+  // Query sin orderBy para evitar índice compuesto, ordenar en cliente
   const q = query(
     collection(db, EQUIPOS_COLLECTION),
     where('ubicacionActual.tipo', '==', 'autobus'),
-    where('ubicacionActual.id', '==', autobusId),
-    orderBy('ubicacionActual.posicionEnBus', 'asc')
+    where('ubicacionActual.id', '==', busId)
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({
+  const equipos = snapshot.docs.map((d) => ({
     id: d.id,
     ...d.data(),
   })) as Equipo[];
+  
+  // Ordenar en cliente por posición en bus
+  return equipos.sort((a, b) => {
+    const posA = a.ubicacionActual?.posicionEnBus || '';
+    const posB = b.ubicacionActual?.posicionEnBus || '';
+    return posA.localeCompare(posB);
+  });
 }
 
 export async function getEquiposByUbicacion(ubicacionId: string): Promise<Equipo[]> {
+  // Query sin orderBy para evitar índice compuesto, ordenar en cliente
   const q = query(
     collection(db, EQUIPOS_COLLECTION),
     where('ubicacionActual.tipo', '==', 'ubicacion'),
-    where('ubicacionActual.id', '==', ubicacionId),
-    orderBy('codigoInterno', 'asc')
+    where('ubicacionActual.id', '==', ubicacionId)
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({
+  const equipos = snapshot.docs.map((d) => ({
     id: d.id,
     ...d.data(),
   })) as Equipo[];
+  
+  // Ordenar en cliente por código interno
+  return equipos.sort((a, b) => a.codigoInterno.localeCompare(b.codigoInterno));
 }
 
 export async function searchEquipos(
@@ -391,18 +406,25 @@ export async function getMovimientosEquipo(
   equipoId: string,
   limitResults: number = 50
 ): Promise<MovimientoEquipo[]> {
+  // Query sin orderBy para evitar índice compuesto
   const q = query(
     collection(db, MOVIMIENTOS_COLLECTION),
     where('equipoId', '==', equipoId),
-    orderBy('fecha', 'desc'),
     limit(limitResults)
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({
+  const movimientos = snapshot.docs.map((d) => ({
     id: d.id,
     ...d.data(),
   })) as MovimientoEquipo[];
+  
+  // Ordenar en cliente por fecha descendente
+  return movimientos.sort((a, b) => {
+    const fechaA = a.fecha?.toDate?.() || new Date(0);
+    const fechaB = b.fecha?.toDate?.() || new Date(0);
+    return fechaB.getTime() - fechaA.getTime();
+  });
 }
 
 export async function registrarMovimientoEquipo(

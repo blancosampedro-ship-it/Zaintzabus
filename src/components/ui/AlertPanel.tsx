@@ -14,12 +14,14 @@ interface AlertPanelProps {
 
 export default function AlertPanel({ incidencias, maxItems = 5 }: AlertPanelProps) {
   const alertas = incidencias
-    .filter(inc => ['nueva', 'en_analisis', 'en_intervencion', 'reabierta'].includes(inc.estado))
+    .filter(inc => inc.timestamps?.recepcion && ['nueva', 'en_analisis', 'en_intervencion', 'reabierta'].includes(inc.estado))
     .sort((a, b) => {
       // Críticas primero, luego por fecha
       if (a.criticidad === 'critica' && b.criticidad !== 'critica') return -1;
       if (b.criticidad === 'critica' && a.criticidad !== 'critica') return 1;
-      return b.timestamps.recepcion.toMillis() - a.timestamps.recepcion.toMillis();
+      const aTime = a.timestamps?.recepcion?.toMillis?.() ?? 0;
+      const bTime = b.timestamps?.recepcion?.toMillis?.() ?? 0;
+      return bTime - aTime;
     })
     .slice(0, maxItems);
 

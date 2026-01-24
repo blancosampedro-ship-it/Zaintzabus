@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // ============================================
-    // HELPER FUNCTIONS
+    // HELPER FUNCTIONS - SISTEMA DE PERMISOS
     // ============================================
     
     // Get user's custom claims
@@ -26,41 +26,81 @@ service cloud.firestore {
       return isAuthenticated() && getUserClaims().rol in roles;
     }
     
-    // Check if user is DFG (super admin)
+    // ============================================
+    // ROLES Y PERMISOS
+    // ============================================
+    
+    // ADMIN: Gestión completa del sistema
+    function isAdmin() {
+      return hasRole('admin');
+    }
+    
+    // DFG: Consorcio/Administración Pública - SOLO LECTURA
     function isDFG() {
       return hasRole('dfg');
     }
+    
+    // OPERADOR: Gestión de flota y reporting
+    function isOperador() {
+      return hasRole('operador');
+    }
+    
+    // JEFE_MANTENIMIENTO: Supervisión técnicos y recursos
+    function isJefeMantenimiento() {
+      return hasRole('jefe_mantenimiento');
+    }
+    
+    // TECNICO: Ejecución de intervenciones
+    function isTecnico() {
+      return hasRole('tecnico');
+    }
+    
+    // ============================================
+    // PERMISOS POR CAPACIDAD
+    // ============================================
+    
+    // Puede gestionar (crear, editar, asignar)
+    function canManage() {
+      return hasAnyRole(['admin', 'jefe_mantenimiento']);
+    }
+    
+    // Puede ejecutar intervenciones (técnico o superior)
+    function canExecuteWork() {
+      return hasAnyRole(['admin', 'jefe_mantenimiento', 'tecnico']);
+    }
+    
+    // Puede reportar incidencias (todos excepto DFG)
+    function canReportIncidencias() {
+      return hasAnyRole(['admin', 'jefe_mantenimiento', 'tecnico', 'operador']);
+    }
+    
+    // Puede ver todos los tenants (DFG y admin)
+    function canAccessAllTenants() {
+      return hasAnyRole(['dfg', 'admin']);
+    }
+    
+    // Puede configurar sistema (solo admin)
+    function canConfigureSystem() {
+      return isAdmin();
+    }
+    
+    // ============================================
+    // VALIDACIONES DE TENANT
+    // ============================================
     
     // Check if user belongs to tenant
     function belongsToTenant(tenantId) {
       return isAuthenticated() && getUserClaims().tenantId == tenantId;
     }
     
-    // Check if user can access tenant (own tenant or DFG)
+    // Check if user can access tenant (own tenant, DFG or admin)
     function canAccessTenant(tenantId) {
-      return isDFG() || belongsToTenant(tenantId);
+      return canAccessAllTenants() || belongsToTenant(tenantId);
     }
     
-    // DFG es solo lectura (nunca escribe)
+    // DFG es solo lectura - nunca escribe datos operativos
     function canWriteToTenant(tenantId) {
       return belongsToTenant(tenantId) && !isDFG();
-    }
-
-    // Roles canónicos
-    function isAdmin() {
-      return hasRole('admin');
-    }
-
-    function isManager() {
-      return hasAnyRole(['admin', 'jefe_mantenimiento']);
-    }
-
-    function isTechnicianOrHigher() {
-      return hasAnyRole(['admin', 'jefe_mantenimiento', 'tecnico']);
-    }
-
-    function isOperatorOrHigher() {
-      return hasAnyRole(['admin', 'jefe_mantenimiento', 'tecnico', 'operador']);
     }
     
     // Validate timestamp is server timestamp
@@ -73,33 +113,35 @@ service cloud.firestore {
     // ============================================
     
     match /tenants/{tenantId} {
-      // Only DFG can read/write tenant configurations
+      // Lectura: usuarios del tenant o DFG/admin
       allow read: if canAccessTenant(tenantId);
-      allow write: if false;
+      // Escritura: solo admin puede modificar configuración de tenant
+      allow write: if canConfigureSystem();
       
       // ==========================================
       // INCIDENCIAS SUBCOLLECTION
+      // Permisos: incidencias:ver, incidencias:crear, incidencias:editar, etc.
       // ==========================================
       
       match /incidencias/{incidenciaId} {
-        // Read: Any authenticated user with access to tenant
+        // Read: Cualquier usuario con acceso al tenant
         allow read: if canAccessTenant(tenantId);
         
-        // Create: Operador/técnico/manager/admin (DFG no)
+        // Create: operador, técnico, jefe o admin pueden crear (DFG NO)
         allow create: if canWriteToTenant(tenantId)
-                && isOperatorOrHigher()
+                && canReportIncidencias()
                 && request.resource.data.tenantId == tenantId
                 && isValidIncidenciaState(request.resource.data.estado);
         
-        // Update: Based on role and canonical state transition
+        // Update: basado en rol y transición de estados válida
         allow update: if canWriteToTenant(tenantId)
-                && isOperatorOrHigher()
+                && canReportIncidencias()
                 && request.resource.data.tenantId == tenantId
                 && isValidIncidenciaState(request.resource.data.estado)
                 && validStateTransition(resource.data, request.resource.data);
         
-        // Delete: Only managers can delete (soft delete preferred)
-        allow delete: if canWriteToTenant(tenantId) && isManager();
+        // Delete: Solo gestores pueden eliminar (preferir soft delete)
+        allow delete: if canWriteToTenant(tenantId) && canManage();
         
         function isValidIncidenciaState(estado) {
           return estado in {
@@ -130,143 +172,216 @@ service cloud.firestore {
       
       // ==========================================
       // INVENTARIO SUBCOLLECTION
+      // Permisos: inventario:ver, inventario:crear, inventario:mover, etc.
       // ==========================================
       
       match /inventario/{itemId} {
-        // Read: Any authenticated user with access to tenant
+        // Read: Cualquier usuario con acceso al tenant
         allow read: if canAccessTenant(tenantId);
         
-        // Create: Technicians and managers can create items
+        // Create: técnicos y gestores pueden crear items
         allow create: if canWriteToTenant(tenantId) 
-                      && isTechnicianOrHigher()
+                      && canExecuteWork()
                       && request.resource.data.tenantId == tenantId;
         
-        // Update: Technicians and managers can update
+        // Update: técnicos y gestores pueden actualizar
         allow update: if canWriteToTenant(tenantId) 
-                      && isTechnicianOrHigher()
+                      && canExecuteWork()
                       && request.resource.data.tenantId == tenantId;
         
-        // Delete: Only managers can delete
-        allow delete: if canWriteToTenant(tenantId) && isManager();
+        // Delete: solo gestores pueden eliminar
+        allow delete: if canWriteToTenant(tenantId) && canManage();
       }
       
       // ==========================================
       // MOVIMIENTOS INVENTARIO SUBCOLLECTION
       // tenants/{tenantId}/inventario/{itemId}/movimientos/{movId}
+      // Permisos: inventario:mover, inventario:consumir
       // ==========================================
 
       match /inventario/{itemId}/movimientos/{movimientoId} {
-        allow read: if canAccessTenant(tenantId) && isTechnicianOrHigher();
+        // Read: técnicos y superiores
+        allow read: if canAccessTenant(tenantId) && canExecuteWork();
 
+        // Create: técnicos pueden registrar movimientos
         allow create: if canWriteToTenant(tenantId)
-                      && isTechnicianOrHigher()
+                      && canExecuteWork()
                       && request.resource.data.tenantId == tenantId;
 
+        // Update/Delete: movimientos son inmutables (auditoría)
         allow update, delete: if false;
       }
       
       // ==========================================
       // ACTIVOS SUBCOLLECTION
+      // Permisos: activos:ver, activos:crear, activos:editar
       // ==========================================
       
       match /activos/{activoId} {
-        // Read: Any authenticated user with access to tenant
+        // Read: cualquier usuario con acceso al tenant
         allow read: if canAccessTenant(tenantId);
         
-        // Create: Only managers can create assets
+        // Create: solo gestores pueden crear activos
         allow create: if canWriteToTenant(tenantId) 
-                      && isManager()
+                      && canManage()
                       && request.resource.data.tenantId == tenantId;
         
-        // Update: Technicians can update status, managers can update all
+        // Update: técnicos pueden actualizar estado, gestores todo
         allow update: if canWriteToTenant(tenantId) 
-                      && isTechnicianOrHigher()
+                      && canExecuteWork()
                       && request.resource.data.tenantId == tenantId;
         
-        // Delete: Only managers can delete (soft delete preferred)
-        allow delete: if canWriteToTenant(tenantId) && isManager();
+        // Delete: solo gestores (preferir soft delete)
+        allow delete: if canWriteToTenant(tenantId) && canManage();
       }
       
       // ==========================================
       // PREVENTIVO SUBCOLLECTION
-      // tenants/{tenantId}/preventivo/{id}
+      // Permisos: preventivo:ver, preventivo:crear, preventivo:asignar
       // ==========================================
 
       match /preventivo/{preventivoId} {
+        // Read: cualquier usuario con acceso
         allow read: if canAccessTenant(tenantId);
 
+        // Create: solo gestores pueden crear planes preventivos
         allow create: if canWriteToTenant(tenantId)
-                      && isManager()
+                      && canManage()
                       && request.resource.data.tenantId == tenantId;
-
+        
+        // Update: técnicos pueden completar checklists
         allow update: if canWriteToTenant(tenantId)
-                      && isTechnicianOrHigher()
+                      && canExecuteWork()
                       && request.resource.data.tenantId == tenantId;
 
-        allow delete: if canWriteToTenant(tenantId) && isManager();
+        // Delete: solo gestores
+        allow delete: if canWriteToTenant(tenantId) && canManage();
+      }
+      
+      // ==========================================
+      // ORDENES DE TRABAJO SUBCOLLECTION
+      // Permisos: ordenes_trabajo:ver, :crear, :asignar, :cerrar
+      // ==========================================
+
+      match /ordenesTrabajo/{otId} {
+        // Read: cualquier usuario con acceso
+        allow read: if canAccessTenant(tenantId);
+
+        // Create: gestores pueden crear OTs
+        allow create: if canWriteToTenant(tenantId)
+                      && canManage()
+                      && request.resource.data.tenantId == tenantId;
+        
+        // Update: técnicos pueden actualizar progreso y cerrar las propias
+        allow update: if canWriteToTenant(tenantId)
+                      && canExecuteWork()
+                      && request.resource.data.tenantId == tenantId;
+
+        // Delete: solo gestores
+        allow delete: if canWriteToTenant(tenantId) && canManage();
+      }
+      
+      // ==========================================
+      // TECNICOS SUBCOLLECTION
+      // Permisos: tecnicos:ver, tecnicos:asignar
+      // ==========================================
+
+      match /tecnicos/{tecnicoId} {
+        // Read: gestores pueden ver técnicos
+        allow read: if canAccessTenant(tenantId) && canManage();
+
+        // Write: solo gestores
+        allow write: if canWriteToTenant(tenantId) && canManage();
       }
       
       // ==========================================
       // USUARIOS SUBCOLLECTION
+      // Permisos: usuarios:ver, usuarios:crear, usuarios:editar
       // ==========================================
       
       match /usuarios/{usuarioId} {
-        // Read: Users can read their own, managers can read all
+        // Read: usuario propio o gestores
         allow read: if canAccessTenant(tenantId) 
-                    && (request.auth.uid == usuarioId || isManager());
+                    && (request.auth.uid == usuarioId || canManage());
         
-        // Create: Only managers can create users
-        allow create: if canWriteToTenant(tenantId) && isManager();
+        // Create: solo gestores pueden crear usuarios
+        allow create: if canWriteToTenant(tenantId) && canManage();
         
-        // Update: Users can update their own profile, managers can update all
+        // Update: usuario propio (campos limitados) o gestores
         allow update: if canWriteToTenant(tenantId) 
-                      && (request.auth.uid == usuarioId || isManager());
+                      && (request.auth.uid == usuarioId || canManage());
         
-        // Delete: Only managers can delete users
-        allow delete: if canWriteToTenant(tenantId) && isManager();
+        // Delete: solo gestores
+        allow delete: if canWriteToTenant(tenantId) && canManage();
       }
       
       // ==========================================
       // AUDITORIA SUBCOLLECTION
+      // Permisos: solo lectura para gestores
       // ==========================================
       
       match /auditoria/{logId} {
-        // Read: Only managers and DFG can read audit logs
-        allow read: if canAccessTenant(tenantId) && (isManager() || isAdmin());
+        // Read: gestores y admin pueden ver auditoría
+        allow read: if canAccessTenant(tenantId) && (canManage() || isDFG());
         
-        // Create: System writes only (via Cloud Functions or admin SDK)
-        // In production, this should be allow create: if false;
-        // and handled server-side only
-        allow create: if canWriteToTenant(tenantId) && isTechnicianOrHigher();
+        // Create: sistema via Cloud Functions
+        allow create: if canWriteToTenant(tenantId) && canExecuteWork();
         
-        // Update/Delete: Never allowed (immutable audit trail)
+        // Update/Delete: inmutable
         allow update, delete: if false;
       }
       
       // ==========================================
       // CONFIGURACION SUBCOLLECTION
+      // Permisos: sistema:configurar
       // ==========================================
       
       match /configuracion/{configId} {
-        // Read: Any authenticated user with access to tenant
+        // Read: cualquier usuario con acceso
         allow read: if canAccessTenant(tenantId);
         
-        // Write: Only managers can modify configuration
-        allow write: if canWriteToTenant(tenantId) && isManager();
+        // Write: solo admin puede modificar configuración
+        allow write: if canWriteToTenant(tenantId) && canConfigureSystem();
       }
       
       // ==========================================
       // SLA METRICS SUBCOLLECTION
+      // Permisos: sla:ver
       // ==========================================
       
       match /sla_metrics/{metricId} {
-        // Read: Any authenticated user with access to tenant
+        // Read: gestores y DFG pueden ver métricas SLA
         allow read: if canAccessTenant(tenantId);
         
-        // Write: System only (via Cloud Functions)
-        // In production, this should be allow write: if false;
-        allow create: if canWriteToTenant(tenantId) && isManager();
+        // Write: sistema via Cloud Functions
+        allow create: if canWriteToTenant(tenantId) && canManage();
         allow update, delete: if false;
+      }
+      
+      // ==========================================
+      // CONTRATOS SUBCOLLECTION
+      // Permisos: contratos:ver, contratos:editar
+      // ==========================================
+
+      match /contratos/{contratoId} {
+        // Read: gestores y DFG pueden ver contratos
+        allow read: if canAccessTenant(tenantId) && (canManage() || isDFG());
+        
+        // Write: solo DFG puede gestionar contratos
+        allow write: if canAccessTenant(tenantId) && isDFG();
+      }
+      
+      // ==========================================
+      // ALMACENES SUBCOLLECTION
+      // Permisos: almacenes:ver, almacenes:editar
+      // ==========================================
+
+      match /almacenes/{almacenId} {
+        // Read: cualquier usuario con acceso
+        allow read: if canAccessTenant(tenantId);
+        
+        // Write: gestores
+        allow write: if canWriteToTenant(tenantId) && canManage();
       }
     }
     

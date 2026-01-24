@@ -266,7 +266,16 @@ export function ActivoSidebar({
       </div>
 
       {/* Footer actions */}
-      <div className="p-4 border-t border-slate-700">
+      <div className="p-4 border-t border-slate-700 space-y-2">
+        {activo.tipo === 'autobus' && (
+          <Link
+            href={`/autobuses/${activo.codigo}/equipos`}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+          >
+            <Package className="w-4 h-4" />
+            Ver Equipos Instalados
+          </Link>
+        )}
         <Link
           href={`/activos/${activo.id}`}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium transition-colors"

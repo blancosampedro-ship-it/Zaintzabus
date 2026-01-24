@@ -5,13 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   collection,
   query,
-  where,
   getDocs,
-  doc,
-  updateDoc,
-  addDoc,
-  deleteDoc,
-  Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { Usuario, RolUsuario, ROL_LABELS } from '@/types';
@@ -26,6 +20,10 @@ import {
   X,
   Check,
   UserCog,
+  Eye,
+  EyeOff,
+  Key,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function AdminUsuariosPage() {
@@ -38,12 +36,42 @@ export default function AdminUsuariosPage() {
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
+    password: '',
     rol: 'tecnico' as RolUsuario,
     activo: true,
   });
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const canManageUsers = hasRole(['admin', 'jefe_mantenimiento']);
+
+  // Función para generar contraseña aleatoria segura
+  const generatePassword = () => {
+    const length = 12;
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const symbols = '!@#$%&*';
+    const allChars = lowercase + uppercase + numbers + symbols;
+    
+    // Asegurar al menos un carácter de cada tipo
+    let password = 
+      lowercase[Math.floor(Math.random() * lowercase.length)] +
+      uppercase[Math.floor(Math.random() * uppercase.length)] +
+      numbers[Math.floor(Math.random() * numbers.length)] +
+      symbols[Math.floor(Math.random() * symbols.length)];
+    
+    // Completar el resto de la contraseña
+    for (let i = password.length; i < length; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Mezclar los caracteres
+    password = password.split('').sort(() => Math.random() - 0.5).join('');
+    
+    setFormData({ ...formData, password });
+    setShowPassword(true); // Mostrar la contraseña generada
+  };
 
   useEffect(() => {
     loadUsuarios();
@@ -77,6 +105,7 @@ export default function AdminUsuariosPage() {
       setFormData({
         nombre: usuario.nombre,
         email: usuario.email,
+        password: '',
         rol: usuario.rol,
         activo: usuario.activo,
       });
@@ -85,10 +114,12 @@ export default function AdminUsuariosPage() {
       setFormData({
         nombre: '',
         email: '',
+        password: '',
         rol: 'tecnico',
         activo: true,
       });
     }
+    setShowPassword(false);
     setShowModal(true);
   };
 
@@ -102,14 +133,26 @@ export default function AdminUsuariosPage() {
 
     setSaving(true);
     try {
-      const usuariosRef = collection(db, `tenants/${claims.tenantId}/usuarios`);
-
       if (editingUser) {
-        const docRef = doc(db, `tenants/${claims.tenantId}/usuarios`, editingUser.id);
-        await updateDoc(docRef, {
-          ...formData,
-          updatedAt: Timestamp.now(),
+        // Actualizar usuario existente
+        const response = await fetch('/api/users', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: editingUser.id,
+            email: formData.email,
+            password: formData.password || undefined,
+            nombre: formData.nombre,
+            rol: formData.rol,
+            tenantId: claims.tenantId,
+            activo: formData.activo,
+          }),
         });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Error al actualizar usuario');
+        }
 
         await registrarAuditoria({
           tenantId: claims.tenantId,
@@ -118,28 +161,39 @@ export default function AdminUsuariosPage() {
           documentoId: editingUser.id,
           cambios: {
             antes: { nombre: editingUser.nombre, rol: editingUser.rol, activo: editingUser.activo },
-            despues: formData,
+            despues: { nombre: formData.nombre, rol: formData.rol, activo: formData.activo },
           },
           usuarioId: user.uid,
           usuarioEmail: user.email || '',
         });
       } else {
-        const newUser = {
-          ...formData,
-          tenantId: claims.tenantId,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        };
-        const docRef = await addDoc(usuariosRef, newUser);
+        // Crear nuevo usuario
+        const response = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            nombre: formData.nombre,
+            rol: formData.rol,
+            tenantId: claims.tenantId,
+            activo: formData.activo,
+          }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Error al crear usuario');
+        }
 
         await registrarAuditoria({
           tenantId: claims.tenantId,
           accion: 'create',
           coleccion: 'usuarios',
-          documentoId: docRef.id,
+          documentoId: result.uid,
           cambios: {
             antes: null,
-            despues: newUser,
+            despues: { nombre: formData.nombre, email: formData.email, rol: formData.rol },
           },
           usuarioId: user.uid,
           usuarioEmail: user.email || '',
@@ -150,6 +204,7 @@ export default function AdminUsuariosPage() {
       handleCloseModal();
     } catch (error) {
       console.error('Error saving user:', error);
+      alert(error instanceof Error ? error.message : 'Error al guardar usuario');
     } finally {
       setSaving(false);
     }
@@ -160,8 +215,14 @@ export default function AdminUsuariosPage() {
     if (!confirm(`¿Estás seguro de eliminar al usuario ${usuario.nombre}?`)) return;
 
     try {
-      const docRef = doc(db, `tenants/${claims.tenantId}/usuarios`, usuario.id);
-      await deleteDoc(docRef);
+      const response = await fetch(`/api/users?uid=${usuario.id}&tenantId=${claims.tenantId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al eliminar usuario');
+      }
 
       await registrarAuditoria({
         tenantId: claims.tenantId,
@@ -179,6 +240,7 @@ export default function AdminUsuariosPage() {
       await loadUsuarios();
     } catch (error) {
       console.error('Error deleting user:', error);
+      alert(error instanceof Error ? error.message : 'Error al eliminar usuario');
     }
   };
 
@@ -368,6 +430,48 @@ export default function AdminUsuariosPage() {
                 />
               </div>
               <div>
+                <label className="label flex items-center gap-2">
+                  <Key className="w-4 h-4" />
+                  Contraseña {editingUser && <span className="text-xs text-gray-400">(dejar vacío para mantener actual)</span>}
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="input-field pr-10"
+                      placeholder={editingUser ? '••••••••' : 'Mínimo 6 caracteres'}
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={generatePassword}
+                    className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium"
+                    title="Generar contraseña segura"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Generar
+                  </button>
+                </div>
+                {!editingUser && formData.password && formData.password.length < 6 && (
+                  <p className="text-xs text-red-500 mt-1">La contraseña debe tener al menos 6 caracteres</p>
+                )}
+                {formData.password && formData.password.length >= 6 && (
+                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Contraseña válida ({formData.password.length} caracteres)
+                  </p>
+                )}
+              </div>
+              <div>
                 <label className="label">Rol</label>
                 <select
                   value={formData.rol}
@@ -400,7 +504,7 @@ export default function AdminUsuariosPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !formData.nombre || !formData.email}
+                disabled={saving || !formData.nombre || !formData.email || (!editingUser && (!formData.password || formData.password.length < 6))}
                 className="btn-primary flex items-center gap-2"
               >
                 {saving ? (

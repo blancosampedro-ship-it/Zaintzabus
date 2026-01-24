@@ -386,6 +386,14 @@ export default function ActivoDetailPage() {
           <div className="card">
             <h3 className="font-semibold text-gray-900 mb-4">Acciones Rápidas</h3>
             <div className="space-y-2">
+              {activo.tipo === 'autobus' && (
+                <Link
+                  href={`/autobuses/${activo.codigo}/equipos`}
+                  className="block w-full btn-primary text-center"
+                >
+                  Ver Equipos Instalados
+                </Link>
+              )}
               <Link
                 href={`/incidencias?activo=${activo.codigo}`}
                 className="block w-full btn-secondary text-center"

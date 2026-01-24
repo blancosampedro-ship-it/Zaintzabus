@@ -44,9 +44,12 @@ export class OperadoresService {
 
   async listActivos(): Promise<Tenant[]> {
     try {
-      const q = query(this.col(), where('activo', '==', true), orderBy('nombre', 'asc'));
+      // Obtener todos y filtrar en cliente para evitar necesidad de índice compuesto
+      const q = query(this.col(), orderBy('nombre', 'asc'));
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Tenant[];
+      return snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }) as Tenant)
+        .filter((t) => t.activo !== false); // Incluir si activo es true o undefined
     } catch (err) {
       throw new FirestoreServiceError('unknown', 'Error listando operadores activos', err);
     }

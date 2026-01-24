@@ -18,12 +18,19 @@ export default function StatusBar({
   incidenciasAbiertas,
   enTaller,
 }: StatusBarProps) {
-  const disponibilidad = flotaTotal > 0 ? (flotaOperativa / flotaTotal) * 100 : 0;
+  // Asegurar valores numéricos válidos
+  const safeFlotaOperativa = flotaOperativa ?? 0;
+  const safeFlotaTotal = flotaTotal ?? 0;
+  const safeIncidenciasCriticas = incidenciasCriticas ?? 0;
+  const safeIncidenciasAbiertas = incidenciasAbiertas ?? 0;
+  const safeEnTaller = enTaller ?? 0;
+
+  const disponibilidad = safeFlotaTotal > 0 ? (safeFlotaOperativa / safeFlotaTotal) * 100 : 0;
   
   // Determinar nivel de alerta global
   const alertLevel = 
-    incidenciasCriticas > 0 || disponibilidad < 80 ? 'critical' :
-    incidenciasAbiertas > 5 || disponibilidad < 90 ? 'warning' : 
+    safeIncidenciasCriticas > 0 || disponibilidad < 80 ? 'critical' :
+    safeIncidenciasAbiertas > 5 || disponibilidad < 90 ? 'warning' : 
     'normal';
 
   const alertColors = {
@@ -53,9 +60,9 @@ export default function StatusBar({
               disponibilidad >= 90 ? 'text-green-400' : 
               disponibilidad >= 80 ? 'text-yellow-400' : 'text-red-400'
             )}>
-              {flotaOperativa}
+              {safeFlotaOperativa}
             </span>
-            <span className="text-slate-500">/{flotaTotal}</span>
+            <span className="text-slate-500">/{safeFlotaTotal}</span>
           </span>
           <span className="text-slate-500 text-xs">operativos</span>
         </div>
@@ -66,7 +73,7 @@ export default function StatusBar({
         {/* En taller */}
         <div className="flex items-center gap-2">
           <Wrench className="w-4 h-4 text-yellow-500" />
-          <span className="font-mono font-bold text-yellow-400">{enTaller}</span>
+          <span className="font-mono font-bold text-yellow-400">{safeEnTaller}</span>
           <span className="text-slate-500 text-xs">en taller</span>
         </div>
 
@@ -77,13 +84,13 @@ export default function StatusBar({
         <div className="flex items-center gap-2">
           <AlertTriangle className={cn(
             'w-4 h-4',
-            incidenciasCriticas > 0 ? 'text-red-500 animate-pulse' : 'text-slate-500'
+            safeIncidenciasCriticas > 0 ? 'text-red-500 animate-pulse' : 'text-slate-500'
           )} />
           <span className={cn(
             'font-mono font-bold',
-            incidenciasCriticas > 0 ? 'text-red-400' : 'text-slate-400'
+            safeIncidenciasCriticas > 0 ? 'text-red-400' : 'text-slate-400'
           )}>
-            {incidenciasCriticas}
+            {safeIncidenciasCriticas}
           </span>
           <span className="text-slate-500 text-xs">críticas</span>
         </div>
@@ -94,7 +101,7 @@ export default function StatusBar({
         {/* Incidencias abiertas */}
         <div className="flex items-center gap-2">
           <CheckCircle className="w-4 h-4 text-slate-400" />
-          <span className="font-mono font-bold text-slate-300">{incidenciasAbiertas}</span>
+          <span className="font-mono font-bold text-slate-300">{safeIncidenciasAbiertas}</span>
           <span className="text-slate-500 text-xs">abiertas</span>
         </div>
       </div>

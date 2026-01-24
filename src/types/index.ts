@@ -33,6 +33,40 @@ export type Rol = (typeof ROLES)[keyof typeof ROLES];
 // Alias de compatibilidad: algunas pantallas usan `RolUsuario`
 export type RolUsuario = Rol;
 
+/**
+ * Etiquetas legibles para cada rol.
+ * Usadas en UI para mostrar el nombre del rol.
+ */
+export const ROL_LABELS: Record<Rol, string> = {
+  admin: 'Administrador',
+  dfg: 'Consorcio / DFG',
+  operador: 'Operador',
+  jefe_mantenimiento: 'Jefe de Mantenimiento',
+  tecnico: 'Técnico',
+};
+
+/**
+ * Etiquetas cortas para cada rol (para badges, etc.)
+ */
+export const ROL_SHORT_LABELS: Record<Rol, string> = {
+  admin: 'Admin',
+  dfg: 'DFG',
+  operador: 'Operador',
+  jefe_mantenimiento: 'Jefe Mant.',
+  tecnico: 'Técnico',
+};
+
+/**
+ * Colores asociados a cada rol (para badges, avatares, etc.)
+ */
+export const ROL_COLORS: Record<Rol, { bg: string; text: string; border: string }> = {
+  admin: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
+  dfg: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
+  operador: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
+  jefe_mantenimiento: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+  tecnico: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
+};
+
 export const ESTADOS_INCIDENCIA = {
   NUEVA: 'nueva',
   EN_ANALISIS: 'en_analisis',
@@ -125,6 +159,9 @@ export interface Activo {
   modelo?: string;
   matricula?: string;
   numeroSerie?: string;
+  numeroChasis?: string;
+  carroceria?: string;
+  anio?: number;
   anioFabricacion?: number;
   anyoFabricacion?: number;
   fechaAdquisicion?: Timestamp;
@@ -139,10 +176,35 @@ export interface Activo {
     direccion?: string;
   };
   tenantId: string;
+  operadorId?: string;
+  operadorNombre?: string;
+  codigoOperador?: string;
   equipos: EquipoInstalado[];
   horasOperacion?: number;
   kilometraje?: number;
   kmTotales?: number;
+  telemetria?: {
+    tieneFms?: boolean;
+    fmsConectado?: boolean;
+  };
+  carteleria?: {
+    tiene?: boolean;
+    tipo?: string;
+  };
+  instalacion?: {
+    fase?: string;
+    fechaInstalacionCompleta?: Timestamp;
+  };
+  contadores?: {
+    totalAverias?: number;
+    totalEquipos?: number;
+  };
+  auditoria?: {
+    creadoPor?: string;
+    modificadoPor?: string;
+    creadoEn?: Timestamp;
+    modificadoEn?: Timestamp;
+  };
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -462,14 +524,6 @@ export const ESTADO_LABELS: Record<EstadoIncidencia, string> = {
 export const CRITICIDAD_LABELS: Record<Criticidad, string> = {
   critica: 'Crítica',
   normal: 'Normal',
-};
-
-export const ROL_LABELS: Record<Rol, string> = {
-  admin: 'Admin',
-  dfg: 'DFG',
-  operador: 'Operador',
-  jefe_mantenimiento: 'Jefe de Mantenimiento',
-  tecnico: 'Técnico',
 };
 
 export const TIPO_ACTIVO_LABELS: Record<TipoActivo, string> = {

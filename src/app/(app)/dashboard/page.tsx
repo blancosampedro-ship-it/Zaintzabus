@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { RequirePermission, PermissionGate, RoleGate } from '@/lib/permissions';
 import { getEstadisticasIncidencias, EstadisticasIncidencias, getIncidencias } from '@/lib/firebase/incidencias';
 import { getResumenInventario, ResumenInventario } from '@/lib/firebase/inventario';
 import { getResumenActivos, ResumenActivos } from '@/lib/firebase/activos';
@@ -12,6 +13,7 @@ import StatusBar from '@/components/ui/StatusBar';
 import KpiGauge from '@/components/ui/KpiGauge';
 import AlertPanel from '@/components/ui/AlertPanel';
 import ActivityFeed, { ActivityItem } from '@/components/ui/ActivityFeed';
+import { ReadOnlyBanner } from '@/components/ui/PermissionUI';
 import {
   RoleDashboardHeader,
   RoleQuickActions,
@@ -20,6 +22,11 @@ import {
   EstadoFlotaWidget,
   CumplimientoSLAWidget,
   useRoleWidgets,
+  RoleKeyQuestionsWidget,
+  SLAEnRiesgoWidget,
+  ResumenCostesWidget,
+  ComparativaOperadoresWidget,
+  ActividadRecienteWidget,
 } from '@/components/dashboard/RoleDashboard';
 import {
   AlertTriangle,
@@ -40,7 +47,7 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
-  const { claims } = useAuth();
+  const { claims, isReadOnly, canViewCosts, canAccessAllTenants, hasPermission } = useAuth();
   const widgets = useRoleWidgets();
   const [stats, setStats] = useState<DashboardStats>({
     incidencias: null,
@@ -81,14 +88,17 @@ export default function DashboardPage() {
   }, [claims?.tenantId]);
 
   // Generar actividad reciente desde incidencias (en producción vendría de auditoría)
-  const actividadReciente: ActivityItem[] = incidenciasAbiertas.slice(0, 5).map((inc) => ({
-    id: inc.id,
-    tipo: 'incidencia' as const,
-    accion: inc.estado === 'nueva' ? 'Nueva incidencia' : `Incidencia en ${inc.estado.replace('_', ' ')}`,
-    descripcion: `${inc.codigo} - ${inc.activoPrincipalCodigo}`,
-    fecha: inc.timestamps.recepcion.toDate(),
-    status: inc.criticidad === 'critica' ? 'warning' as const : 'info' as const,
-  }));
+  const actividadReciente: ActivityItem[] = incidenciasAbiertas
+    .filter((inc) => inc.timestamps?.recepcion)
+    .slice(0, 5)
+    .map((inc) => ({
+      id: inc.id,
+      tipo: 'incidencia' as const,
+      accion: inc.estado === 'nueva' ? 'Nueva incidencia' : `Incidencia en ${inc.estado.replace('_', ' ')}`,
+      descripcion: `${inc.codigo} - ${inc.activoPrincipalCodigo}`,
+      fecha: inc.timestamps.recepcion.toDate(),
+      status: inc.criticidad === 'critica' ? 'warning' as const : 'info' as const,
+    }));
 
   if (loading) {
     return (
@@ -108,8 +118,8 @@ export default function DashboardPage() {
     );
   }
 
-  const disponibilidad = stats.activos?.total 
-    ? Math.round((stats.activos.operativos / stats.activos.total) * 100) 
+  const disponibilidad = (stats.activos?.total ?? 0) > 0
+    ? Math.round(((stats.activos?.operativos ?? 0) / (stats.activos?.total ?? 1)) * 100) || 0
     : 0;
 
   return (
@@ -124,8 +134,15 @@ export default function DashboardPage() {
         }}
       />
 
-      {/* Status Bar Global - Para roles de supervisión */}
-      {(claims?.rol === 'admin' || claims?.rol === 'jefe_mantenimiento') && (
+      {/* Banner de solo lectura para DFG */}
+      {isReadOnly && (
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 pt-4">
+          <ReadOnlyBanner />
+        </div>
+      )}
+
+      {/* Status Bar Global - Solo para roles de supervisión con permiso */}
+      <RequirePermission permission="sla:ver">
         <StatusBar
           flotaOperativa={stats.activos?.operativos ?? 0}
           flotaTotal={stats.activos?.total ?? 0}
@@ -133,7 +150,7 @@ export default function DashboardPage() {
           incidenciasAbiertas={stats.incidencias?.abiertas ?? 0}
           enTaller={stats.activos?.enTaller ?? 0}
         />
-      )}
+      </RequirePermission>
 
       <div className="max-w-[1800px] mx-auto p-4 sm:p-6 space-y-6">
         {/* Quick Actions - Role specific */}
@@ -141,47 +158,67 @@ export default function DashboardPage() {
 
         {/* Role-specific widgets grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Widget: Estado Flota - para dfg/operador */}
-          {(claims?.rol === 'dfg' || claims?.rol === 'operador') && (
+          {/* Widget: Estado Flota - para quien pueda ver activos */}
+          <RequirePermission permission="activos:ver">
             <EstadoFlotaWidget
               operativos={stats.activos?.operativos}
               enTaller={stats.activos?.enTaller}
               total={stats.activos?.total}
             />
-          )}
+          </RequirePermission>
 
-          {/* Widget: Cumplimiento SLA - para dfg/operador */}
-          {(claims?.rol === 'dfg' || claims?.rol === 'operador') && (
+          {/* Widget: Cumplimiento SLA - solo si puede ver SLA */}
+          <RequirePermission permission="sla:ver">
             <CumplimientoSLAWidget
               porcentaje={95} // TODO: conectar con datos reales
               incidenciasTotales={stats.incidencias?.abiertas || 0}
-              dentroDeSLA={Math.round((stats.incidencias?.abiertas || 0) * 0.95)}
+              dentroDeSLA={Math.round((stats.incidencias?.abiertas || 0) * 0.95) || 0}
             />
-          )}
+          </RequirePermission>
 
           {/* Widget: Mis OTs - para técnicos */}
           {claims?.rol === 'tecnico' && (
             <MisOTsWidget ordenes={[]} />
           )}
 
-          {/* Widget: Técnicos - para jefe_mantenimiento */}
-          {claims?.rol === 'jefe_mantenimiento' && (
+          {/* Widget: Técnicos - para jefe_mantenimiento y admin */}
+          <RequirePermission permission="tecnicos:ver">
             <TecnicosDisponiblesWidget tecnicos={[]} />
+          </RequirePermission>
+
+          {/* Widget: SLA en Riesgo - para gestores */}
+          <RequirePermission permission={['sla:ver', 'incidencias:asignar']} requireAll={false}>
+            <SLAEnRiesgoWidget incidencias={[]} />
+          </RequirePermission>
+
+          {/* Widget: Comparativa Operadores - solo DFG/admin */}
+          {canAccessAllTenants && (
+            <ComparativaOperadoresWidget operadores={[]} />
           )}
 
-          {/* Alertas - visible para supervisores */}
-          {(claims?.rol === 'admin' || claims?.rol === 'jefe_mantenimiento' || claims?.rol === 'dfg') && (
+          {/* Widget: Costes - solo si puede ver costes */}
+          {canViewCosts && (
+            <ResumenCostesWidget
+              costesMes={12500}
+              costesAcumulado={85000}
+              presupuesto={120000}
+            />
+          )}
+
+          {/* Alertas - visible para quien puede ver incidencias */}
+          <RequirePermission permission="incidencias:ver">
             <AlertPanel incidencias={incidenciasAbiertas} maxItems={5} />
-          )}
+          </RequirePermission>
 
-          {/* Actividad reciente - visible para todos excepto operadores básicos */}
-          {claims?.rol !== 'operador' && (
-            <ActivityFeed items={actividadReciente} maxItems={5} />
-          )}
+          {/* Preguntas clave del rol */}
+          <RoleKeyQuestionsWidget />
+
+          {/* Actividad reciente */}
+          <ActivityFeed items={actividadReciente} maxItems={5} />
         </div>
 
-        {/* KPIs principales - Grid industrial (visible para supervisores) */}
-        {(claims?.rol === 'admin' || claims?.rol === 'jefe_mantenimiento' || claims?.rol === 'dfg') && (
+        {/* KPIs principales - Grid industrial (solo para roles con permiso de SLA) */}
+        <RequirePermission permission="sla:ver">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiGauge
               label="Incidencias Abiertas"
@@ -224,10 +261,10 @@ export default function DashboardPage() {
               }
             />
           </div>
-        )}
+        </RequirePermission>
 
-        {/* Resúmenes detallados - solo para admin/jefe */}
-        {(claims?.rol === 'admin' || claims?.rol === 'jefe_mantenimiento') && (
+        {/* Resúmenes detallados - solo para admin/jefe (quien tiene permiso de técnicos) */}
+        <RequirePermission permission="tecnicos:ver">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Incidencias por estado */}
             <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
@@ -241,7 +278,7 @@ export default function DashboardPage() {
                     <span className="text-sm text-slate-400 capitalize">
                       {estado.replace('_', ' ')}
                     </span>
-                    <span className="font-mono font-medium text-white">{count}</span>
+                    <span className="font-mono font-medium text-white">{count || 0}</span>
                   </div>
                 ))}
               </div>
@@ -337,7 +374,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-        )}
+        </RequirePermission>
       </div>
     </div>
   );

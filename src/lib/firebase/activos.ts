@@ -14,7 +14,7 @@ import {
 import { db } from '@/lib/firebase/config';
 import { Activo, ActivoFormData } from '@/types';
 
-const COLLECTION_NAME = 'activos';
+const COLLECTION_NAME = 'autobuses';
 
 export async function getActivos(
   tenantId: string,

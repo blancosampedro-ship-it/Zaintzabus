@@ -72,6 +72,9 @@ import {
 } from '@/types';
 import { BusSchema, EquiposList } from '@/components/autobuses';
 import { formatDate, formatDistanceToNow, cn } from '@/lib/utils';
+import { getEquiposByAutobus } from '@/lib/firebase/equipos';
+import { getActivoById } from '@/lib/firebase/activos';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -103,6 +106,7 @@ const FASE_CONFIG: Record<string, { label: string; color: string; progress: numb
 
 interface AutobusDetalle extends Autobus {
   operadorNombre?: string;
+  codigoOperador?: string;
 }
 
 interface EquipoConEstado extends Equipo {
@@ -159,34 +163,42 @@ function VehiculoInfo({ autobus }: { autobus: AutobusDetalle }) {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-muted-foreground">Marca</p>
-            <p className="font-medium">{autobus.marca}</p>
+            <p className="text-sm text-slate-400">Marca</p>
+            <p className="font-medium text-white">{autobus.marca || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Modelo</p>
-            <p className="font-medium">{autobus.modelo}</p>
+            <p className="text-sm text-slate-400">Modelo</p>
+            <p className="font-medium text-white">{autobus.modelo || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Carrocería</p>
-            <p className="font-medium">{autobus.carroceria || 'N/A'}</p>
+            <p className="text-sm text-slate-400">Carrocería</p>
+            <p className="font-medium text-white">{autobus.carroceria || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Año</p>
-            <p className="font-medium">{autobus.anio || 'N/A'}</p>
+            <p className="text-sm text-slate-400">Año</p>
+            <p className="font-medium text-white">{autobus.anio || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Matrícula</p>
-            <p className="font-medium font-mono">{autobus.matricula}</p>
+            <p className="text-sm text-slate-400">Matrícula</p>
+            <p className="font-medium font-mono text-white">{autobus.matricula}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Nº Chasis</p>
-            <p className="font-medium font-mono text-sm">{autobus.numeroChasis || 'N/A'}</p>
+            <p className="text-sm text-slate-400">Nº Chasis</p>
+            <p className="font-medium font-mono text-sm text-white">{autobus.numeroChasis || 'N/A'}</p>
           </div>
         </div>
         <Separator />
-        <div>
-          <p className="text-sm text-muted-foreground">Operador</p>
-          <p className="font-medium">{autobus.operadorNombre || autobus.operadorId}</p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-slate-400">Operador</p>
+            <p className="font-medium text-white">{autobus.operadorNombre || autobus.operadorId}</p>
+          </div>
+          {autobus.codigoOperador && (
+            <div>
+              <p className="text-sm text-slate-400">Código Operador</p>
+              <p className="font-medium text-white">{autobus.codigoOperador}</p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -209,29 +221,29 @@ function EstadoInstalacion({ autobus }: { autobus: AutobusDetalle }) {
       <CardContent className="space-y-6">
         {/* Estado actual */}
         <div>
-          <p className="text-sm text-muted-foreground mb-2">Estado Actual</p>
+          <p className="text-sm text-slate-400 mb-2">Estado Actual</p>
           <div className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded-full ${estadoConfig.color}`} />
-            <span className="font-medium">{estadoConfig.label}</span>
+            <span className="font-medium text-white">{estadoConfig.label}</span>
           </div>
         </div>
 
         {/* Fase de instalación */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-muted-foreground">Fase de Instalación</p>
+            <p className="text-sm text-slate-400">Fase de Instalación</p>
             <Badge variant="outline" className={faseConfig.color === 'bg-green-500' ? 'border-green-500 text-green-600' : ''}>
               {faseConfig.label}
             </Badge>
           </div>
-          <div className="w-full bg-slate-200 rounded-full h-2">
+          <div className="w-full bg-slate-700 rounded-full h-2">
             <div 
               className={`h-2 rounded-full ${faseConfig.color} transition-all`}
               style={{ width: `${faseConfig.progress}%` }}
             />
           </div>
           {autobus.instalacion?.fechaInstalacionCompleta && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               Completada el {formatDate(autobus.instalacion.fechaInstalacionCompleta)}
             </p>
           )}
@@ -241,12 +253,12 @@ function EstadoInstalacion({ autobus }: { autobus: AutobusDetalle }) {
 
         {/* Sistemas */}
         <div className="space-y-3">
-          <p className="text-sm font-medium">Sistemas Instalados</p>
+          <p className="text-sm font-medium text-slate-300">Sistemas Instalados</p>
           
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Radio className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">Telemetría/FMS</span>
+              <Radio className="h-4 w-4 text-slate-400" />
+              <span className="text-sm text-white">Telemetría/FMS</span>
             </div>
             {autobus.telemetria ? (
               <Badge variant="default" className="bg-green-500">Activo</Badge>
@@ -257,8 +269,8 @@ function EstadoInstalacion({ autobus }: { autobus: AutobusDetalle }) {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Monitor className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">Cartelería</span>
+              <Monitor className="h-4 w-4 text-slate-400" />
+              <span className="text-sm text-white">Cartelería</span>
             </div>
             {autobus.carteleria ? (
               <Badge variant="default" className="bg-green-500">Activo</Badge>
@@ -286,16 +298,16 @@ function Contadores({ autobus }: { autobus: AutobusDetalle }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <span className="text-sm">Averías</span>
+            <span className="text-sm text-white">Averías</span>
           </div>
-          <span className="font-bold text-lg">{autobus.contadores?.totalAverias || 0}</span>
+          <span className="font-bold text-lg text-white">{autobus.contadores?.totalAverias || 0}</span>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-slate-500" />
-            <span className="text-sm">Equipos instalados</span>
+            <Package className="h-4 w-4 text-cyan-500" />
+            <span className="text-sm text-white">Equipos instalados</span>
           </div>
-          <span className="font-bold text-lg">{autobus.contadores?.totalEquipos || 0}</span>
+          <span className="font-bold text-lg text-white">{autobus.contadores?.totalEquipos || 0}</span>
         </div>
       </CardContent>
     </Card>
@@ -350,6 +362,7 @@ function PreventivoMiniCard({ preventivo }: { preventivo: Preventivo }) {
 export default function AutobusDetallePage() {
   const params = useParams();
   const router = useRouter();
+  const { claims } = useAuth();
   const autobusId = params.id as string;
 
   // Estados
@@ -365,136 +378,52 @@ export default function AutobusDetallePage() {
   // Cargar datos
   useEffect(() => {
     async function loadData() {
+      if (!claims?.tenantId) return;
+      
       setLoading(true);
       try {
-        // Simulación de carga de datos
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Mock data - en producción usar Firebase
-        const mockAutobus: AutobusDetalle = {
-          id: autobusId,
-          codigo: 'BUS-001',
-          matricula: '1234-ABC',
-          numeroChasis: 'WDB1234567890',
-          marca: 'Mercedes-Benz',
-          modelo: 'Citaro K',
-          carroceria: 'Urbano',
-          anio: 2020,
-          operadorId: 'op-001',
-          operadorNombre: 'Bizkaibus',
-          estado: ESTADOS_AUTOBUS.OPERATIVO,
-          telemetria: { tieneFms: true, fmsConectado: true },
-          carteleria: { tiene: true, tipo: 'LED' },
-          instalacion: {
-            fase: FASES_INSTALACION.COMPLETA,
-            fechaPreinstalacion: new Date('2024-01-15') as any,
-            fechaInstalacionCompleta: new Date('2024-02-01') as any,
-          },
-          contadores: {
-            totalAverias: 5,
-            totalEquipos: 8,
-          },
-          auditoria: {
-            createdAt: new Date('2024-01-01') as any,
-            creadoPor: 'admin',
-            updatedAt: new Date('2024-06-15') as any,
-            actualizadoPor: 'tecnico1',
-          },
-        };
-
-        // Mock equipos - simplificado para desarrollo
-        const mockEquipos = [
-          {
-            id: 'eq-1',
-            codigo: 'FMS-001',
-            tipo: 'FMS',
-            estado: 'OPERATIVO',
-            ubicacionActual: {
-              tipo: 'AUTOBUS',
-              autobusId: autobusId,
-              posicionEnBus: 'CABINA_CONDUCTOR',
+        // Cargar activo (autobús) desde Firestore
+        const activoData = await getActivoById(claims.tenantId, autobusId);
+        
+        if (activoData) {
+          // Cast explícito para manejar campos que pueden venir de Firestore
+          const rawData = activoData as any;
+          const autobusData: AutobusDetalle = {
+            id: activoData.id,
+            codigo: activoData.codigo,
+            matricula: activoData.matricula || '',
+            numeroChasis: rawData.numeroChasis || '',
+            marca: activoData.marca || '',
+            modelo: activoData.modelo || '',
+            carroceria: rawData.carroceria || '',
+            anio: rawData.anio,
+            operadorId: rawData.operadorId || claims.tenantId,
+            operadorNombre: rawData.operadorNombre || claims.tenantId,
+            codigoOperador: rawData.codigoOperador,
+            estado: (activoData.estado as EstadoAutobus) || ESTADOS_AUTOBUS.OPERATIVO,
+            telemetria: rawData.telemetria || { tieneFms: false, fmsConectado: false },
+            carteleria: rawData.carteleria || { tiene: false, tipo: '' },
+            instalacion: rawData.instalacion || {
+              fase: FASES_INSTALACION.PENDIENTE,
             },
-          },
-          {
-            id: 'eq-2',
-            codigo: 'MON-001',
-            tipo: 'MONITOR',
-            estado: 'OPERATIVO',
-            ubicacionActual: {
-              tipo: 'AUTOBUS',
-              autobusId: autobusId,
-              posicionEnBus: 'FRONTAL',
+            contadores: {
+              totalAverias: rawData.contadores?.totalAverias || 0,
+              totalEquipos: rawData.contadores?.totalEquipos || 0,
             },
-          },
-          {
-            id: 'eq-3',
-            codigo: 'VAL-001',
-            tipo: 'VALIDADORA',
-            estado: 'AVERIADO',
-            tieneIncidencias: true,
-            ubicacionActual: {
-              tipo: 'AUTOBUS',
-              autobusId: autobusId,
-              posicionEnBus: 'PUERTA_DELANTERA',
-            },
-          },
-          {
-            id: 'eq-4',
-            codigo: 'CAM-001',
-            tipo: 'CAMARA',
-            estado: 'OPERATIVO',
-            ubicacionActual: {
-              tipo: 'AUTOBUS',
-              autobusId: autobusId,
-              posicionEnBus: 'TECHO_DELANTERO',
-            },
-          },
-          {
-            id: 'eq-5',
-            codigo: 'CAM-002',
-            tipo: 'CAMARA',
-            estado: 'OPERATIVO',
-            ubicacionActual: {
-              tipo: 'AUTOBUS',
-              autobusId: autobusId,
-              posicionEnBus: 'TECHO_TRASERO',
-            },
-          },
-        ] as any[];
+            auditoria: rawData.auditoria || {},
+          };
+          setAutobus(autobusData);
 
-        // Mock incidencias - simplificado para desarrollo  
-        const mockIncidencias = [
-          {
-            id: 'inc-1',
-            codigo: 'INC-2024-001',
-            criticidad: 'alta',
-            estado: 'abierta',
-            createdAt: new Date('2024-06-10'),
-          },
-          {
-            id: 'inc-2',
-            codigo: 'INC-2024-002',
-            criticidad: 'media',
-            estado: 'en_progreso',
-            createdAt: new Date('2024-06-12'),
-          },
-        ] as any[];
+          // Cargar equipos usando el CÓDIGO del activo (BUS-XXX), no el ID de Firestore
+          // Los equipos tienen ubicacionActual.id = "BUS-321" que corresponde al código
+          const equiposData = await getEquiposByAutobus(activoData.codigo);
+          console.log(`[AutobusDetalle] Cargados ${equiposData.length} equipos para bus ${activoData.codigo}`);
+          setEquipos(equiposData as EquipoConEstado[]);
+        }
 
-        // Mock preventivos - simplificado para desarrollo
-        const mockPreventivos = [
-          {
-            id: 'prev-1',
-            nombre: 'Revisión mensual FMS',
-            descripcion: 'Revisión del sistema de telemetría',
-            activo: true,
-            proximaEjecucion: new Date('2024-07-15'),
-          },
-        ] as any[];
-
-        setAutobus(mockAutobus);
-        setEquipos(mockEquipos);
-        setIncidencias(mockIncidencias);
-        setPreventivos(mockPreventivos);
+        // TODO: Cargar incidencias y preventivos cuando estén implementados
+        setIncidencias([]);
+        setPreventivos([]);
       } catch (error) {
         console.error('Error loading autobus:', error);
       } finally {
@@ -502,10 +431,10 @@ export default function AutobusDetallePage() {
       }
     }
 
-    if (autobusId) {
+    if (autobusId && claims?.tenantId) {
       loadData();
     }
-  }, [autobusId]);
+  }, [autobusId, claims?.tenantId]);
 
   // Handlers
   const handleDelete = async () => {

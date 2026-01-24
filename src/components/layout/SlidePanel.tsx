@@ -6,7 +6,8 @@ import { usePathname } from 'next/navigation';
 import { Dialog, Transition } from '@headlessui/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils/index';
-import { ROL_LABELS } from '@/types';
+import { ROL_LABELS, ROL_COLORS } from '@/types';
+import { Permission } from '@/lib/permissions/types';
 import {
   X,
   Bus,
@@ -27,71 +28,72 @@ import {
   ClipboardList,
   HelpCircle,
   ChevronRight,
+  Shield,
 } from 'lucide-react';
 
-// Acciones rápidas según rol
+// Acciones rápidas según rol (con permisos)
 const quickActions = {
   tecnico: [
-    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus },
-    { name: 'Buscar equipo', href: '/equipos', icon: Search },
+    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus, permission: 'incidencias:crear' as Permission },
+    { name: 'Buscar equipo', href: '/equipos', icon: Search, permission: 'equipos:ver' as Permission },
     { name: 'Escanear QR', action: 'scan-qr', icon: QrCode },
   ],
   jefe_mantenimiento: [
-    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus },
-    { name: 'Asignar técnico', href: '/ordenes-trabajo', icon: Users },
+    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus, permission: 'incidencias:crear' as Permission },
+    { name: 'Asignar técnico', href: '/ordenes-trabajo', icon: Users, permission: 'ordenes_trabajo:asignar' as Permission },
     { name: 'Ver alertas', href: '/dashboard', icon: AlertTriangle },
   ],
   admin: [
-    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus },
-    { name: 'Gestionar usuarios', href: '/admin/usuarios', icon: Users },
-    { name: 'Configuración', href: '/admin/configuracion', icon: Settings },
+    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus, permission: 'incidencias:crear' as Permission },
+    { name: 'Gestionar usuarios', href: '/admin/usuarios', icon: Users, permission: 'usuarios:ver' as Permission },
+    { name: 'Configuración', href: '/admin/configuracion', icon: Settings, permission: 'sistema:configurar' as Permission },
   ],
   dfg: [
-    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus },
-    { name: 'Ver informes', href: '/informes', icon: FileText },
-    { name: 'Contratos', href: '/contratos', icon: FileSpreadsheet },
+    { name: 'Ver incidencias', href: '/incidencias', icon: AlertTriangle, permission: 'incidencias:ver' as Permission },
+    { name: 'Ver informes', href: '/informes', icon: FileText, permission: 'informes:ver' as Permission },
+    { name: 'Contratos', href: '/contratos', icon: FileSpreadsheet, permission: 'contratos:ver' as Permission },
   ],
   operador: [
-    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus },
-    { name: 'Mi flota', href: '/autobuses', icon: Bus },
-    { name: 'Ver informes', href: '/informes', icon: FileText },
+    { name: 'Nueva incidencia', href: '/incidencias/nueva', icon: Plus, permission: 'incidencias:crear' as Permission },
+    { name: 'Mi flota', href: '/autobuses', icon: Bus, permission: 'activos:ver' as Permission },
+    { name: 'Ver informes', href: '/informes', icon: FileText, permission: 'informes:ver' as Permission },
   ],
 };
 
-// Navegación principal por secciones
+// Navegación principal por secciones (con permisos en lugar de roles)
 const navigationSections = [
   {
     title: 'Operaciones',
     items: [
-      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento', 'tecnico'] },
-      { name: 'Incidencias', href: '/incidencias', icon: AlertTriangle, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento', 'tecnico'], badge: 'incidencias' },
-      { name: 'Órdenes de Trabajo', href: '/ordenes-trabajo', icon: ClipboardList, roles: ['admin', 'dfg', 'jefe_mantenimiento', 'tecnico'] },
-      { name: 'Preventivo', href: '/preventivo', icon: Calendar, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento', 'tecnico'], badge: 'vencidos' },
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: null }, // Todos los autenticados
+      { name: 'Incidencias', href: '/incidencias', icon: AlertTriangle, permission: 'incidencias:ver' as Permission, badge: 'incidencias' },
+      { name: 'Órdenes de Trabajo', href: '/ordenes-trabajo', icon: ClipboardList, permission: 'ordenes_trabajo:ver' as Permission },
+      { name: 'Preventivo', href: '/preventivo', icon: Calendar, permission: 'preventivo:ver' as Permission, badge: 'vencidos' },
     ],
   },
   {
     title: 'Activos',
     items: [
-      { name: 'Flota / Autobuses', href: '/autobuses', icon: Bus, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento', 'tecnico'] },
-      { name: 'Equipos', href: '/equipos', icon: Wrench, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento', 'tecnico'] },
-      { name: 'Inventario', href: '/inventario', icon: Package, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento', 'tecnico'], badge: 'stockBajo' },
+      { name: 'Flota / Autobuses', href: '/autobuses', icon: Bus, permission: 'activos:ver' as Permission },
+      { name: 'Equipos', href: '/equipos', icon: Wrench, permission: 'equipos:ver' as Permission },
+      { name: 'Inventario', href: '/inventario', icon: Package, permission: 'inventario:ver' as Permission, badge: 'stockBajo' },
     ],
   },
   {
     title: 'Gestión',
     items: [
-      { name: 'Técnicos', href: '/tecnicos', icon: Users, roles: ['admin', 'jefe_mantenimiento'] },
-      { name: 'Operadores', href: '/admin/operadores', icon: Building2, roles: ['admin', 'dfg'] },
-      { name: 'Contratos', href: '/contratos', icon: FileSpreadsheet, roles: ['admin', 'dfg'] },
-      { name: 'Facturación', href: '/facturacion', icon: FileText, roles: ['admin', 'dfg'] },
-      { name: 'Informes', href: '/informes', icon: FileText, roles: ['admin', 'dfg', 'operador', 'jefe_mantenimiento'] },
+      { name: 'Técnicos', href: '/tecnicos', icon: Users, permission: 'tecnicos:ver' as Permission },
+      { name: 'Operadores', href: '/admin/operadores', icon: Building2, permission: 'operadores:ver' as Permission },
+      { name: 'Contratos', href: '/contratos', icon: FileSpreadsheet, permission: 'contratos:ver' as Permission },
+      { name: 'Facturación', href: '/facturacion', icon: FileText, permission: 'facturacion:ver' as Permission },
+      { name: 'Informes', href: '/informes', icon: FileText, permission: 'informes:ver' as Permission },
     ],
   },
   {
     title: 'Configuración',
     items: [
-      { name: 'Usuarios', href: '/admin/usuarios', icon: Users, roles: ['admin', 'jefe_mantenimiento'] },
-      { name: 'Sistema', href: '/admin/configuracion', icon: Settings, roles: ['admin'] },
+      { name: 'Usuarios', href: '/admin/usuarios', icon: Users, permission: 'usuarios:ver' as Permission },
+      { name: 'Sistema', href: '/admin/configuracion', icon: Settings, permission: 'sistema:configurar' as Permission },
     ],
   },
 ];
@@ -108,15 +110,24 @@ interface SlidePanelProps {
 
 export default function SlidePanel({ isOpen, onClose, badges = {} }: SlidePanelProps) {
   const pathname = usePathname();
-  const { usuario, claims, signOut } = useAuth();
+  const { usuario, claims, signOut, hasPermission, roleInfo } = useAuth();
 
   const userRole = claims?.rol || 'tecnico';
   const roleQuickActions = quickActions[userRole as keyof typeof quickActions] || quickActions.tecnico;
+  const roleColors = ROL_COLORS[userRole as keyof typeof ROL_COLORS] || ROL_COLORS.tecnico;
 
   const getBadgeCount = (badgeKey?: string): number | undefined => {
     if (!badgeKey) return undefined;
     return badges[badgeKey as keyof typeof badges];
   };
+
+  // Filtrar acciones rápidas por permiso
+  const filteredQuickActions = roleQuickActions.filter(action => {
+    if ('permission' in action && action.permission) {
+      return hasPermission(action.permission);
+    }
+    return true;
+  });
 
   const handleSignOut = async () => {
     onClose();
@@ -185,7 +196,7 @@ export default function SlidePanel({ isOpen, onClose, badges = {} }: SlidePanelP
                           Acciones rápidas
                         </p>
                         <div className="grid grid-cols-3 gap-2">
-                          {roleQuickActions.map((action) => (
+                          {filteredQuickActions.map((action) => (
                             'href' in action ? (
                               <Link
                                 key={action.name}
@@ -220,7 +231,7 @@ export default function SlidePanel({ isOpen, onClose, badges = {} }: SlidePanelP
                       {/* Navigation Sections */}
                       {navigationSections.map((section) => {
                         const visibleItems = section.items.filter(
-                          (item) => claims?.rol && item.roles.includes(claims.rol)
+                          (item) => item.permission === null || hasPermission(item.permission)
                         );
 
                         if (visibleItems.length === 0) return null;
@@ -278,8 +289,13 @@ export default function SlidePanel({ isOpen, onClose, badges = {} }: SlidePanelP
                     {/* Footer - User Info */}
                     <div className="border-t border-slate-700 p-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center">
-                          <span className="text-sm font-bold text-white">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center",
+                          roleColors.bg,
+                          "border",
+                          roleColors.border
+                        )}>
+                          <span className={cn("text-sm font-bold", roleColors.text)}>
                             {usuario?.nombre?.charAt(0) || 'U'}
                           </span>
                         </div>
@@ -287,9 +303,12 @@ export default function SlidePanel({ isOpen, onClose, badges = {} }: SlidePanelP
                           <p className="text-sm font-medium text-white truncate">
                             {usuario?.nombre || 'Usuario'}
                           </p>
-                          <p className="text-xs text-slate-400 truncate">
-                            {claims?.rol ? ROL_LABELS[claims.rol] : 'Sin rol'}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Shield className={cn("w-3 h-3", roleColors.text)} />
+                            <p className={cn("text-xs truncate", roleColors.text)}>
+                              {claims?.rol ? ROL_LABELS[claims.rol] : 'Sin rol'}
+                            </p>
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-2">

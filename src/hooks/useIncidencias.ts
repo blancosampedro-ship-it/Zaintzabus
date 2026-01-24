@@ -33,6 +33,15 @@ export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidencias
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Estabilizar filtros para evitar re-renders innecesarios
+  const pageSize = filtros.pageSize ?? 50;
+  const operadorId = filtros.operadorId;
+  const criticidad = filtros.criticidad;
+  // Serializar estado para comparación estable (puede ser array o string)
+  const estadoKey = Array.isArray(filtros.estado)
+    ? filtros.estado.sort().join(',')
+    : filtros.estado ?? '';
+
   const fetch = useCallback(async () => {
     if (!tenantId) {
       setIncidencias([]);
@@ -52,9 +61,9 @@ export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidencias
       const service = new IncidenciasService(db);
       const result = await service.filtrar(ctx, {
         estado: filtros.estado,
-        criticidad: filtros.criticidad,
-        operadorId: filtros.operadorId,
-        pageSize: filtros.pageSize ?? 50,
+        criticidad,
+        operadorId,
+        pageSize,
       });
 
       setIncidencias(result);
@@ -64,7 +73,7 @@ export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidencias
     } finally {
       setLoading(false);
     }
-  }, [tenantId, user, filtros]);
+  }, [tenantId, user, pageSize, operadorId, criticidad, estadoKey, filtros.estado]);
 
   useEffect(() => {
     fetch();

@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useIncidencias } from './useIncidencias';
-import { useAutobuses } from './useAutobuses';
+import { useIncidencias, type FiltrosIncidencias } from './useIncidencias';
+import { useAutobuses, type FiltrosAutobuses } from './useAutobuses';
 import { useTenantId } from '@/contexts/OperadorContext';
 import type { Incidencia, Autobus, EstadoIncidencia } from '@/types';
 
@@ -46,6 +46,19 @@ export interface MetricasDashboard {
   loading: boolean;
   error: string | null;
 }
+
+// =============================================================================
+// CONSTANTES DE FILTROS (estables para evitar re-renders)
+// =============================================================================
+
+const FILTROS_INCIDENCIAS_ACTIVAS: FiltrosIncidencias = {
+  estado: ['nueva', 'en_analisis', 'en_intervencion', 'reabierta'],
+  pageSize: 100,
+};
+
+const FILTROS_AUTOBUSES_DASHBOARD: FiltrosAutobuses = {
+  pageSize: 200,
+};
 
 // =============================================================================
 // FUNCIONES AUXILIARES
@@ -116,24 +129,19 @@ function estaDentroSLA(incidencia: Incidencia): boolean {
 export function useDashboardMetrics(): MetricasDashboard {
   const tenantId = useTenantId();
   
-  // Cargar incidencias activas (no cerradas)
+  // Cargar incidencias activas (no cerradas) - usar constante estable
   const { 
     incidencias, 
     loading: loadingIncidencias, 
     error: errorIncidencias 
-  } = useIncidencias({
-    estado: ['nueva', 'en_analisis', 'en_intervencion', 'reabierta'],
-    pageSize: 100,
-  });
+  } = useIncidencias(FILTROS_INCIDENCIAS_ACTIVAS);
   
-  // Cargar autobuses
+  // Cargar autobuses - usar constante estable
   const { 
     autobuses, 
     loading: loadingAutobuses, 
     error: errorAutobuses 
-  } = useAutobuses({
-    pageSize: 200,
-  });
+  } = useAutobuses(FILTROS_AUTOBUSES_DASHBOARD);
   
   // Calcular métricas (memoizado para performance)
   const metricas = useMemo(() => {
@@ -226,26 +234,31 @@ export interface MetricasOperador extends MetricasDashboard {
  * Útil para el rol DFG que supervisa múltiples operadores.
  */
 export function useDashboardMetricsOperador(operadorId: string): MetricasDashboard {
+  // Memoizar filtros para evitar re-renders
+  const filtrosIncidencias = useMemo<FiltrosIncidencias>(() => ({
+    estado: ['nueva', 'en_analisis', 'en_intervencion', 'reabierta'],
+    operadorId,
+    pageSize: 100,
+  }), [operadorId]);
+
+  const filtrosAutobuses = useMemo<FiltrosAutobuses>(() => ({
+    operadorId,
+    pageSize: 200,
+  }), [operadorId]);
+
   // Cargar incidencias del operador
   const { 
     incidencias, 
     loading: loadingIncidencias, 
     error: errorIncidencias 
-  } = useIncidencias({
-    estado: ['nueva', 'en_analisis', 'en_intervencion', 'reabierta'],
-    operadorId,
-    pageSize: 100,
-  });
+  } = useIncidencias(filtrosIncidencias);
   
   // Cargar autobuses del operador
   const { 
     autobuses, 
     loading: loadingAutobuses, 
     error: errorAutobuses 
-  } = useAutobuses({
-    operadorId,
-    pageSize: 200,
-  });
+  } = useAutobuses(filtrosAutobuses);
   
   // Reutilizar la misma lógica de cálculo
   const metricas = useMemo(() => {

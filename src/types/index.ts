@@ -1101,6 +1101,30 @@ export interface ContadoresAutobus {
   totalAverias: number;
 }
 
+/** Resumen de un equipo instalado en el bus (denormalizado para UI rápida). */
+export interface EquipoResumen {
+  /** ID del equipo en colección equipos. */
+  id: DocumentId;
+  /** Tipo de equipo (SAE, VALIDADORA, etc). */
+  tipo: string;
+  /** Número de serie del fabricante. */
+  serie?: string;
+  /** Estado actual del equipo. */
+  estado: EstadoEquipo;
+  /** Posición en el bus. */
+  posicion?: string;
+}
+
+/** Metadatos de migración (para trazabilidad de datos importados). */
+export interface MetadatosMigracion {
+  /** Tenant de origen. */
+  origenTenant?: string;
+  /** ID de documento original. */
+  origenDocId?: string;
+  /** Fecha de migración. */
+  fechaMigracion?: FirestoreTimestamp;
+}
+
 /** Autobús (vehículo). */
 export interface Autobus {
   /** ID del autobús (documentId). */
@@ -1131,6 +1155,14 @@ export interface Autobus {
   instalacion?: InstalacionAutobus;
   /** Contadores desnormalizados. */
   contadores: ContadoresAutobus;
+  /** Resumen de equipos instalados (denormalizado para UI). */
+  equiposResumen?: EquipoResumen[];
+  /** Tags de negocio (ej: cableado_reforzado, migrado). */
+  tags?: string[];
+  /** Comentarios originales. */
+  comentarios?: string;
+  /** Metadatos de migración (si fue importado). */
+  migracion?: MetadatosMigracion;
   /** Metadatos de auditoría. */
   auditoria: Auditoria;
 }

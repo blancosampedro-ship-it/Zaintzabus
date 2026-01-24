@@ -33,6 +33,12 @@ export function useOrdenesTrabajo(filtros: FiltrosOT = {}): UseOrdenesTrabajoRes
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Estabilizar filtros para evitar re-renders innecesarios
+  const pageSize = filtros.pageSize ?? 50;
+  const tecnicoId = filtros.tecnicoId;
+  const operadorId = filtros.operadorId;
+  const estado = filtros.estado;
+
   const fetch = useCallback(async () => {
     if (!tenantId) {
       setOrdenes([]);
@@ -51,10 +57,10 @@ export function useOrdenesTrabajo(filtros: FiltrosOT = {}): UseOrdenesTrabajoRes
 
       const service = new OrdenesTrabajoService(db);
       const result = await service.filtrar(ctx, {
-        tecnicoId: filtros.tecnicoId,
-        operadorId: filtros.operadorId,
-        estado: filtros.estado,
-        pageSize: filtros.pageSize ?? 50,
+        tecnicoId,
+        operadorId,
+        estado,
+        pageSize,
       });
 
       setOrdenes(result);
@@ -64,7 +70,7 @@ export function useOrdenesTrabajo(filtros: FiltrosOT = {}): UseOrdenesTrabajoRes
     } finally {
       setLoading(false);
     }
-  }, [tenantId, user, filtros]);
+  }, [tenantId, user, pageSize, tecnicoId, operadorId, estado]);
 
   useEffect(() => {
     fetch();

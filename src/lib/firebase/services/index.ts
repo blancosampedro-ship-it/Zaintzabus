@@ -5,6 +5,7 @@ export * from '@/lib/firebase/services/audit.service';
 export * from '@/lib/firebase/services/laboratorios.service';
 export * from '@/lib/firebase/services/tiposEquipo.service';
 export * from '@/lib/firebase/services/autobuses.service';
+export * from '@/lib/firebase/services/operadores.service';
 export * from '@/lib/firebase/services/tecnicos.service';
 export * from '@/lib/firebase/services/equipos.service';
 export * from '@/lib/firebase/services/movimientosEquipo.service';

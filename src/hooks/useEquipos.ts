@@ -38,8 +38,15 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
   const [hasMore, setHasMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<any>(null);
 
+  // Estabilizar filtros para evitar re-renders innecesarios
+  const pageSize = filtros.pageSize ?? 50;
+  const tipoEquipoId = filtros.tipoEquipoId;
+  const estado = filtros.estado;
+  const operadorId = filtros.operadorId;
+  const numeroSerie = filtros.numeroSerie;
+
   const fetch = useCallback(
-    async (append = false) => {
+    async (append = false, startAfterDoc?: any) => {
       if (!tenantId) {
         setEquipos([]);
         setLoading(false);
@@ -58,12 +65,12 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
         const service = new EquiposService(db);
 
         const result = await service.busquedaAvanzada(ctx, {
-          tipoEquipoId: filtros.tipoEquipoId,
-          estado: filtros.estado,
-          operadorId: filtros.operadorId,
-          numeroSerie: filtros.numeroSerie,
-          pageSize: filtros.pageSize ?? 50,
-          lastDoc: append ? lastDoc : undefined,
+          tipoEquipoId,
+          estado,
+          operadorId,
+          numeroSerie,
+          pageSize,
+          lastDoc: startAfterDoc,
         });
 
         if (append) {
@@ -81,15 +88,14 @@ export function useEquipos(filtros: FiltrosEquipos = {}): UseEquiposResult {
         setLoading(false);
       }
     },
-    [tenantId, user, filtros, lastDoc]
+    [tenantId, user, pageSize, tipoEquipoId, estado, operadorId, numeroSerie]
   );
 
   useEffect(() => {
     fetch(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, filtros.tipoEquipoId, filtros.estado, filtros.operadorId, filtros.numeroSerie]);
+  }, [fetch]);
 
-  const loadMore = useCallback(() => fetch(true), [fetch]);
+  const loadMore = useCallback(() => fetch(true, lastDoc), [fetch, lastDoc]);
   const refetch = useCallback(() => fetch(false), [fetch]);
 
   return { equipos, loading, error, hasMore, loadMore, refetch };

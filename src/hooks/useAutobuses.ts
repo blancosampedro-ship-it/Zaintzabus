@@ -36,18 +36,23 @@ export function useAutobuses(filtros: FiltrosAutobuses = {}): UseAutobusesResult
   const [hasMore, setHasMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<any>(null);
 
-  const ctx: ServiceContext = {
-    tenantId: tenantId ?? undefined,
-    actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
-  };
+  // Estabilizar filtros para evitar re-renders innecesarios
+  const pageSize = filtros.pageSize ?? 50;
+  const operadorId = filtros.operadorId;
+  const estado = filtros.estado;
 
   const fetch = useCallback(
-    async (append = false) => {
+    async (append = false, startAfterDoc?: any) => {
       if (!tenantId) {
         setAutobuses([]);
         setLoading(false);
         return;
       }
+
+      const ctx: ServiceContext = {
+        tenantId,
+        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
+      };
 
       try {
         if (!append) setLoading(true);
@@ -56,20 +61,20 @@ export function useAutobuses(filtros: FiltrosAutobuses = {}): UseAutobusesResult
         const service = new AutobusesService(db);
 
         let result;
-        if (filtros.operadorId) {
-          result = await service.listByOperador(ctx, filtros.operadorId, {
-            pageSize: filtros.pageSize ?? 50,
-            startAfter: append ? lastDoc : undefined,
+        if (operadorId) {
+          result = await service.listByOperador(ctx, operadorId, {
+            pageSize,
+            startAfter: startAfterDoc,
           });
-        } else if (filtros.estado) {
-          result = await service.listByEstado(ctx, filtros.estado, {
-            pageSize: filtros.pageSize ?? 50,
-            startAfter: append ? lastDoc : undefined,
+        } else if (estado) {
+          result = await service.listByEstado(ctx, estado, {
+            pageSize,
+            startAfter: startAfterDoc,
           });
         } else {
           result = await service.list(ctx, {
-            pageSize: filtros.pageSize ?? 50,
-            startAfter: append ? lastDoc : undefined,
+            pageSize,
+            startAfter: startAfterDoc,
             orderBy: [{ fieldPath: 'codigo', direction: 'asc' }],
           });
         }
@@ -89,15 +94,14 @@ export function useAutobuses(filtros: FiltrosAutobuses = {}): UseAutobusesResult
         setLoading(false);
       }
     },
-    [tenantId, filtros.operadorId, filtros.estado, filtros.pageSize, lastDoc]
+    [tenantId, user, operadorId, estado, pageSize]
   );
 
   useEffect(() => {
     fetch(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, filtros.operadorId, filtros.estado]);
+  }, [fetch]);
 
-  const loadMore = useCallback(() => fetch(true), [fetch]);
+  const loadMore = useCallback(() => fetch(true, lastDoc), [fetch, lastDoc]);
   const refetch = useCallback(() => fetch(false), [fetch]);
 
   return { autobuses, loading, error, hasMore, loadMore, refetch };

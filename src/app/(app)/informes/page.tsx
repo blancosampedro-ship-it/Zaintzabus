@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { getFirestore } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Input, Select } from '@/components/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantId } from '@/contexts/OperadorContext';
 import { useReportData, useOperadoresList } from '@/hooks/useReportData';
 import { RequirePermission } from '@/lib/permissions';
+import { getAuditService } from '@/lib/firebase/services/audit.service';
 
 // Lógica de transformación
 import {
@@ -142,6 +144,42 @@ export default function InformesPage() {
     operadorId: operadorSeleccionado || undefined,
   });
 
+  // Log de exportación (silencioso)
+  const logExportacion = useCallback(async (tipo: string, formato: 'excel' | 'pdf') => {
+    if (!usuario) return;
+    
+    try {
+      const db = getFirestore();
+      const auditService = getAuditService(db);
+      await auditService.logAction(
+        {
+          tenantId: tenantId || 'global',
+          actor: {
+            uid: usuario.id,
+            email: usuario.email,
+            rol: claims?.rol || 'usuario',
+          },
+        },
+        {
+          entidad: 'incidencia', // Usamos incidencia como entidad general para informes
+          entidadId: `informe-${tipo}-${Date.now()}`,
+          accion: 'crear',
+          cambios: [
+            { campo: 'tipoInforme', valorAnterior: null, valorNuevo: tipo },
+            { campo: 'formato', valorAnterior: null, valorNuevo: formato },
+            { campo: 'fechaDesde', valorAnterior: null, valorNuevo: fechaDesde },
+            { campo: 'fechaHasta', valorAnterior: null, valorNuevo: fechaHasta },
+            { campo: 'registros', valorAnterior: null, valorNuevo: incidencias.length },
+          ],
+          motivoCambio: `Exportación de informe ${tipo} en formato ${formato.toUpperCase()}`,
+        }
+      );
+    } catch (err) {
+      // Silencioso: no interrumpir la exportación
+      console.warn('[Informes] Error registrando exportación:', err);
+    }
+  }, [usuario, tenantId, claims?.rol, fechaDesde, fechaHasta, incidencias.length]);
+
   // Obtener nombre de operador
   const getNombreOperador = () => {
     if (!operadorSeleccionado) return undefined;
@@ -192,6 +230,9 @@ export default function InformesPage() {
           break;
         }
       }
+      
+      // Registrar exportación (silencioso)
+      logExportacion(tipoSeleccionado, 'excel');
     } catch (err) {
       console.error('Error exportando Excel:', err);
       alert('Error al exportar Excel');
@@ -242,6 +283,9 @@ export default function InformesPage() {
           break;
         }
       }
+      
+      // Registrar exportación (silencioso)
+      logExportacion(tipoSeleccionado, 'pdf');
     } catch (err) {
       console.error('Error exportando PDF:', err);
       alert('Error al exportar PDF');

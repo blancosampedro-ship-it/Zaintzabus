@@ -1,9 +1,7 @@
 export * from '@/lib/firebase/services/errors';
 export * from '@/lib/firebase/services/base';
 export * from '@/lib/firebase/services/utils';
-
-export * from '@/lib/firebase/services/operadores.service';
-export * from '@/lib/firebase/services/ubicaciones.service';
+export * from '@/lib/firebase/services/audit.service';
 export * from '@/lib/firebase/services/laboratorios.service';
 export * from '@/lib/firebase/services/tiposEquipo.service';
 export * from '@/lib/firebase/services/autobuses.service';

@@ -64,6 +64,7 @@ export * from './useEstadisticas';
 export * from './useAlertas';
 export * from './useDashboardMetrics';
 export * from './useReportData';
+export * from './useAuditHistory';
 
 // Hooks de acciones
 export * from './useCrearEquipo';

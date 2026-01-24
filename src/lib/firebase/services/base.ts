@@ -22,6 +22,30 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { FirestoreServiceError } from '@/lib/firebase/services/errors';
+import { getAuditService, calcularCambios, type TipoEntidad } from './audit.service';
+
+export interface ActorContext {
+  /** UID del actor. */
+  uid: string;
+  /** Email del actor (opcional). */
+  email?: string;
+  /** Rol del actor (opcional). */
+  rol?: string;
+}
+
+export interface ServiceContext {
+  /** Tenant actual (si aplica). */
+  tenantId?: string;
+  /** Actor que ejecuta la operación (para auditoría). */
+  actor?: ActorContext;
+}
+
+export interface AuditConfig {
+  /** Si true, habilita auditoría automática en operaciones CRUD */
+  enabled: boolean;
+  /** Tipo de entidad para la auditoría */
+  entidad: TipoEntidad;
+}
 
 export interface ActorContext {
   /** UID del actor. */
@@ -80,6 +104,7 @@ export type CollectionPathBuilder = (ctx: Required<Pick<ServiceContext, 'tenantI
  * - CRUD
  * - Soft delete (eliminado + fecha_eliminacion)
  * - Auditoría (creado_por, actualizado_por, createdAt, updatedAt)
+ * - Auditoría automática en colección `auditoria` (opcional)
  * - Listado paginado + filtros
  * - Búsqueda por términos (array-contains-any)
  * - Listener realtime
@@ -87,10 +112,54 @@ export type CollectionPathBuilder = (ctx: Required<Pick<ServiceContext, 'tenantI
 export class BaseFirestoreService<T extends { id: string }> {
   protected readonly db: Firestore;
   protected readonly collectionPath: CollectionPathBuilder;
+  protected readonly auditConfig?: AuditConfig;
 
-  constructor(db: Firestore, collectionPath: CollectionPathBuilder) {
+  constructor(db: Firestore, collectionPath: CollectionPathBuilder, auditConfig?: AuditConfig) {
     this.db = db;
     this.collectionPath = collectionPath;
+    this.auditConfig = auditConfig;
+  }
+
+  /**
+   * Registra auditoría de forma silenciosa (no interrumpe si falla).
+   */
+  protected async auditarAccion(
+    ctx: ServiceContext,
+    accion: 'crear' | 'actualizar' | 'eliminar' | 'cambio_estado',
+    entidadId: string,
+    datosAnteriores?: Record<string, unknown> | null,
+    datosNuevos?: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.auditConfig?.enabled) return;
+
+    try {
+      const auditService = getAuditService(this.db);
+
+      switch (accion) {
+        case 'crear':
+          if (datosNuevos) {
+            await auditService.logCreacion(ctx, this.auditConfig.entidad, entidadId, datosNuevos);
+          }
+          break;
+        case 'actualizar':
+          if (datosAnteriores && datosNuevos) {
+            await auditService.logActualizacion(
+              ctx,
+              this.auditConfig.entidad,
+              entidadId,
+              datosAnteriores,
+              datosNuevos
+            );
+          }
+          break;
+        case 'eliminar':
+          await auditService.logEliminacion(ctx, this.auditConfig.entidad, entidadId);
+          break;
+      }
+    } catch (error) {
+      // Silencioso: solo logea el error
+      console.error('[BaseService] Error en auditoría:', error);
+    }
   }
 
   protected col(ctx: ServiceContext) {
@@ -123,7 +192,12 @@ export class BaseFirestoreService<T extends { id: string }> {
 
   async createAutoId(ctx: ServiceContext, data: Omit<T, 'id'>): Promise<string> {
     try {
-      const docRef = await addDoc(this.col(ctx), this.withAuditOnCreate(data as unknown as Record<string, unknown>, ctx));
+      const auditedData = this.withAuditOnCreate(data as unknown as Record<string, unknown>, ctx);
+      const docRef = await addDoc(this.col(ctx), auditedData);
+      
+      // Auditoría automática
+      await this.auditarAccion(ctx, 'crear', docRef.id, null, auditedData);
+      
       return docRef.id;
     } catch (err) {
       throw new FirestoreServiceError('unknown', 'Error creando documento', err);
@@ -132,7 +206,11 @@ export class BaseFirestoreService<T extends { id: string }> {
 
   async createWithId(ctx: ServiceContext, id: string, data: Omit<T, 'id'>): Promise<void> {
     try {
-      await setDoc(this.ref(ctx, id), this.withAuditOnCreate(data as unknown as Record<string, unknown>, ctx), { merge: false });
+      const auditedData = this.withAuditOnCreate(data as unknown as Record<string, unknown>, ctx);
+      await setDoc(this.ref(ctx, id), auditedData, { merge: false });
+      
+      // Auditoría automática
+      await this.auditarAccion(ctx, 'crear', id, null, auditedData);
     } catch (err) {
       throw new FirestoreServiceError('unknown', 'Error creando documento con ID', err);
     }
@@ -160,7 +238,14 @@ export class BaseFirestoreService<T extends { id: string }> {
       const snap = await getDoc(this.ref(ctx, id));
       if (!snap.exists()) throw new FirestoreServiceError('not-found', 'Documento no encontrado');
 
+      // Guardar datos anteriores para auditoría
+      const datosAnteriores = snap.data() as Record<string, unknown>;
+      const datosNuevos = { ...datosAnteriores, ...patch };
+
       await updateDoc(this.ref(ctx, id), this.withAuditOnUpdate(patch as unknown as Record<string, unknown>, ctx));
+      
+      // Auditoría automática
+      await this.auditarAccion(ctx, 'actualizar', id, datosAnteriores, datosNuevos);
     } catch (err) {
       if (err instanceof FirestoreServiceError) throw err;
       throw new FirestoreServiceError('unknown', 'Error actualizando documento', err);
@@ -184,6 +269,9 @@ export class BaseFirestoreService<T extends { id: string }> {
           ctx
         )
       );
+      
+      // Auditoría automática
+      await this.auditarAccion(ctx, 'eliminar', id);
     } catch (err) {
       if (err instanceof FirestoreServiceError) throw err;
       throw new FirestoreServiceError('unknown', 'Error eliminando documento (soft delete)', err);

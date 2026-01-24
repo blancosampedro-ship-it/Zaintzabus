@@ -47,10 +47,14 @@ export interface CambiarUbicacionParams {
 
 export class EquiposService extends BaseFirestoreService<Equipo> {
   constructor(db: Firestore) {
-    super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
-      return `tenants/${ctx.tenantId}/equipos`;
-    });
+    super(
+      db,
+      (ctx) => {
+        if (!ctx.tenantId) throw new Error('tenantId requerido');
+        return `tenants/${ctx.tenantId}/equipos`;
+      },
+      { enabled: true, entidad: 'inventario' } // Auditoría habilitada
+    );
   }
 
   private movimientosColPath(ctx: ServiceContext) {

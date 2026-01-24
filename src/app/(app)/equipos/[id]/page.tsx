@@ -29,6 +29,7 @@ import {
   MoverEquipoModal,
   type MoverEquipoFormData,
 } from '@/components/equipos';
+import { HistorialCambios } from '@/components/auditoria';
 import {
   Breadcrumbs,
   Badge,
@@ -453,6 +454,19 @@ export default function EquipoDetallePage() {
             )}
           </CardContent>
         </Card>
+      ),
+    },
+    {
+      id: 'auditoria',
+      label: 'Auditoría',
+      icon: <FileText className="h-4 w-4" />,
+      content: (
+        <HistorialCambios
+          entidadId={equipo.id}
+          titulo="Historial de Cambios del Equipo"
+          limite={30}
+          realtime={false}
+        />
       ),
     },
   ];

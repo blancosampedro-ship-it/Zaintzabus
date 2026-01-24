@@ -7,10 +7,14 @@ import { FirestoreServiceError } from '@/lib/firebase/services/errors';
 
 export class PreventivosService extends BaseFirestoreService<Preventivo> {
   constructor(db: Firestore) {
-    super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
-      return `tenants/${ctx.tenantId}/preventivos`;
-    });
+    super(
+      db,
+      (ctx) => {
+        if (!ctx.tenantId) throw new Error('tenantId requerido');
+        return `tenants/${ctx.tenantId}/preventivos`;
+      },
+      { enabled: true, entidad: 'preventivo' } // Auditoría habilitada
+    );
   }
 
   /** Calcula próxima ejecución a partir de periodicidad y una fecha base. */

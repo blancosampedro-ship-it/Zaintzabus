@@ -18,10 +18,14 @@ import { esTransicionValidaIncidencia } from '@/lib/logic/estados';
 
 export class IncidenciasService extends BaseFirestoreService<Incidencia> {
   constructor(db: Firestore) {
-    super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
-      return `tenants/${ctx.tenantId}/incidencias`;
-    });
+    super(
+      db,
+      (ctx) => {
+        if (!ctx.tenantId) throw new Error('tenantId requerido');
+        return `tenants/${ctx.tenantId}/incidencias`;
+      },
+      { enabled: true, entidad: 'incidencia' } // Auditoría habilitada
+    );
   }
 
   /**

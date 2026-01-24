@@ -9,10 +9,9 @@ import {
   cambiarEstadoIncidencia,
   updateIncidencia,
 } from '@/lib/firebase/incidencias';
-import { getAuditLogsByEntity } from '@/lib/firebase/auditoria';
+import { HistorialCambios } from '@/components/auditoria';
 import {
   Incidencia,
-  AuditLog,
   ESTADO_LABELS,
   CRITICIDAD_LABELS,
   TRANSICIONES_ESTADO,
@@ -42,7 +41,6 @@ export default function IncidenciaDetailPage() {
   const router = useRouter();
   const { claims, usuario, hasRole } = useAuth();
   const [incidencia, setIncidencia] = useState<Incidencia | null>(null);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [changingState, setChangingState] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
@@ -56,13 +54,8 @@ export default function IncidenciaDetailPage() {
       if (!claims?.tenantId || !incidenciaId) return;
 
       try {
-        const [inc, logs] = await Promise.all([
-          getIncidenciaById(claims.tenantId, incidenciaId),
-          getAuditLogsByEntity('incidencia', incidenciaId, claims.tenantId),
-        ]);
-
+        const inc = await getIncidenciaById(claims.tenantId, incidenciaId);
         setIncidencia(inc);
-        setAuditLogs(logs);
       } catch (error) {
         console.error('Error loading incidencia:', error);
       } finally {
@@ -523,47 +516,12 @@ export default function IncidenciaDetailPage() {
           </div>
 
           {/* Auditoría */}
-          <div className="card">
-            <button
-              onClick={() => setShowAudit(!showAudit)}
-              className="w-full flex items-center justify-between"
-            >
-              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                <History className="w-5 h-5" />
-                Historial de Cambios
-              </h2>
-              <ChevronRight
-                className={cn(
-                  'w-5 h-5 text-gray-400 transition-transform',
-                  showAudit && 'rotate-90'
-                )}
-              />
-            </button>
-            {showAudit && (
-              <div className="mt-4 space-y-3">
-                {auditLogs.length > 0 ? (
-                  auditLogs.map((log) => (
-                    <div key={log.id} className="text-sm border-l-2 border-gray-200 pl-3">
-                      <p className="text-gray-500">
-                        {formatDateTime(log.timestamp)}
-                      </p>
-                      <p className="font-medium">
-                        {log.accion === 'cambio_estado' ? 'Cambio de estado' : log.accion}
-                      </p>
-                      {log.cambios.map((cambio, idx) => (
-                        <p key={idx} className="text-gray-600">
-                          {cambio.campo}: {String(cambio.valorAnterior)} → {String(cambio.valorNuevo)}
-                        </p>
-                      ))}
-                      <p className="text-gray-400">{log.usuarioEmail}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-400 italic">Sin historial</p>
-                )}
-              </div>
-            )}
-          </div>
+          <HistorialCambios
+            entidadId={incidenciaId}
+            titulo="Historial de Cambios"
+            limite={30}
+            realtime={false}
+          />
         </div>
       </div>
     </div>

@@ -62,6 +62,7 @@ export * from './useOrdenesTrabajo';
 export * from './useMovimientosEquipo';
 export * from './useEstadisticas';
 export * from './useAlertas';
+export * from './useDashboardMetrics';
 
 // Hooks de acciones
 export * from './useCrearEquipo';

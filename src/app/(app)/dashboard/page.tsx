@@ -14,16 +14,14 @@ import KpiGauge from '@/components/ui/KpiGauge';
 import AlertPanel from '@/components/ui/AlertPanel';
 import ActivityFeed, { ActivityItem } from '@/components/ui/ActivityFeed';
 import { ReadOnlyBanner } from '@/components/ui/PermissionUI';
+import { DashboardKPIGrid } from '@/components/dashboard/DashboardKPIGrid';
 import {
   RoleDashboardHeader,
   RoleQuickActions,
   MisOTsWidget,
   TecnicosDisponiblesWidget,
-  EstadoFlotaWidget,
-  CumplimientoSLAWidget,
   useRoleWidgets,
   RoleKeyQuestionsWidget,
-  SLAEnRiesgoWidget,
   ResumenCostesWidget,
   ComparativaOperadoresWidget,
   ActividadRecienteWidget,
@@ -156,26 +154,11 @@ export default function DashboardPage() {
         {/* Quick Actions - Role specific */}
         <RoleQuickActions />
 
+        {/* === KPI GRID PRINCIPAL - Datos en tiempo real desde useDashboardMetrics === */}
+        <DashboardKPIGrid />
+
         {/* Role-specific widgets grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Widget: Estado Flota - para quien pueda ver activos */}
-          <RequirePermission permission="activos:ver">
-            <EstadoFlotaWidget
-              operativos={stats.activos?.operativos}
-              enTaller={stats.activos?.enTaller}
-              total={stats.activos?.total}
-            />
-          </RequirePermission>
-
-          {/* Widget: Cumplimiento SLA - solo si puede ver SLA */}
-          <RequirePermission permission="sla:ver">
-            <CumplimientoSLAWidget
-              porcentaje={95} // TODO: conectar con datos reales
-              incidenciasTotales={stats.incidencias?.abiertas || 0}
-              dentroDeSLA={Math.round((stats.incidencias?.abiertas || 0) * 0.95) || 0}
-            />
-          </RequirePermission>
-
           {/* Widget: Mis OTs - para técnicos */}
           {claims?.rol === 'tecnico' && (
             <MisOTsWidget ordenes={[]} />
@@ -184,11 +167,6 @@ export default function DashboardPage() {
           {/* Widget: Técnicos - para jefe_mantenimiento y admin */}
           <RequirePermission permission="tecnicos:ver">
             <TecnicosDisponiblesWidget tecnicos={[]} />
-          </RequirePermission>
-
-          {/* Widget: SLA en Riesgo - para gestores */}
-          <RequirePermission permission={['sla:ver', 'incidencias:asignar']} requireAll={false}>
-            <SLAEnRiesgoWidget incidencias={[]} />
           </RequirePermission>
 
           {/* Widget: Comparativa Operadores - solo DFG/admin */}

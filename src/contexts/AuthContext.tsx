@@ -165,6 +165,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Limpiar localStorage de selección de operador (evita persistencia cross-session)
+    localStorage.removeItem('zaintzabus_operador_seleccionado');
+    
     await firebaseSignOut(auth);
     setUser(null);
     setUsuario(null);

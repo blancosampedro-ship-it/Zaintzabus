@@ -31,6 +31,8 @@ export interface ActorContext {
   email?: string;
   /** Rol del actor (opcional). */
   rol?: string;
+  /** Tenant de origen del actor (para auditoría cross-tenant). */
+  tenantId?: string;
 }
 
 export interface ServiceContext {
@@ -45,22 +47,6 @@ export interface AuditConfig {
   enabled: boolean;
   /** Tipo de entidad para la auditoría */
   entidad: TipoEntidad;
-}
-
-export interface ActorContext {
-  /** UID del actor. */
-  uid: string;
-  /** Email del actor (opcional). */
-  email?: string;
-  /** Rol del actor (opcional). */
-  rol?: string;
-}
-
-export interface ServiceContext {
-  /** Tenant actual (si aplica). */
-  tenantId?: string;
-  /** Actor que ejecuta la operación (para auditoría). */
-  actor?: ActorContext;
 }
 
 export interface ListPage<T> {

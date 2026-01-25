@@ -233,6 +233,8 @@ export class AuditService {
         usuarioId: ctx.actor.uid,
         usuarioEmail: ctx.actor.email || 'desconocido',
         usuarioRol: ctx.actor.rol || 'desconocido',
+        // Tenant de origen del actor (para trazabilidad cross-tenant)
+        ...(ctx.actor.tenantId && { actorTenantId: ctx.actor.tenantId }),
         timestamp: serverTimestamp() as any,
         tenantId: ctx.tenantId || 'global',
         cambios,

@@ -18,7 +18,7 @@ interface UseAsignarOTResult {
  */
 export function useAsignarOT(): UseAsignarOTResult {
   const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { user, claims } = useAuth();
   const { success, error: mostrarError } = useNotificaciones();
 
   const [loading, setLoading] = useState(false);
@@ -42,7 +42,11 @@ export function useAsignarOT(): UseAsignarOTResult {
 
         const ctx: ServiceContext = {
           tenantId,
-          actor: { uid: user.uid, email: user.email ?? undefined },
+          actor: { 
+            uid: user.uid, 
+            email: user.email ?? undefined,
+            tenantId: claims?.tenantId,
+          },
         };
 
         const ordenesService = new OrdenesTrabajoService(db);
@@ -60,7 +64,7 @@ export function useAsignarOT(): UseAsignarOTResult {
         setLoading(false);
       }
     },
-    [tenantId, user, success, mostrarError]
+    [tenantId, user, claims, success, mostrarError]
   );
 
   return { asignar, loading, error };

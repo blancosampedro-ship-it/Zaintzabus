@@ -158,6 +158,7 @@ export default function InformesPage() {
             uid: usuario.id,
             email: usuario.email,
             rol: claims?.rol || 'usuario',
+            tenantId: claims?.tenantId, // Tenant de origen del actor
           },
         },
         {

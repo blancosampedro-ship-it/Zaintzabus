@@ -8,6 +8,7 @@ import IndustrialHeader from '@/components/layout/IndustrialHeader';
 import ContextualNav from '@/components/layout/ContextualNav';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
 import CommandPalette from '@/components/layout/CommandPalette';
+import TenantContextBar from '@/components/layout/TenantContextBar';
 import { Loader2, Bus } from 'lucide-react';
 import { cn } from '@/lib/utils/index';
 
@@ -115,6 +116,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             // TODO: conectar con datos reales
           ]}
         />
+
+        {/* Tenant Context Bar - Visible solo para DFG/Admin */}
+        <TenantContextBar />
 
         {/* Contextual Navigation - Shows tabs, filters, actions per route */}
         <ContextualNav 

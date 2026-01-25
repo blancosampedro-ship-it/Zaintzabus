@@ -24,7 +24,7 @@ interface UseCambiarEstadoIncidenciaResult {
  */
 export function useCambiarEstadoIncidencia(): UseCambiarEstadoIncidenciaResult {
   const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { user, claims } = useAuth();
   const { success, error: mostrarError } = useNotificaciones();
 
   const [loading, setLoading] = useState(false);
@@ -52,7 +52,11 @@ export function useCambiarEstadoIncidencia(): UseCambiarEstadoIncidenciaResult {
 
         const ctx: ServiceContext = {
           tenantId,
-          actor: { uid: user.uid, email: user.email ?? undefined },
+          actor: { 
+            uid: user.uid, 
+            email: user.email ?? undefined,
+            tenantId: claims?.tenantId,
+          },
         };
 
         const service = new IncidenciasService(db);
@@ -71,7 +75,7 @@ export function useCambiarEstadoIncidencia(): UseCambiarEstadoIncidenciaResult {
         setLoading(false);
       }
     },
-    [tenantId, user, success, mostrarError]
+    [tenantId, user, claims, success, mostrarError]
   );
 
   return { cambiarEstado, loading, error };

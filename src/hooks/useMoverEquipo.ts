@@ -31,7 +31,7 @@ interface UseMoverEquipoResult {
  */
 export function useMoverEquipo(): UseMoverEquipoResult {
   const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { user, claims } = useAuth();
   const { success, error: mostrarError } = useNotificaciones();
 
   const [loading, setLoading] = useState(false);
@@ -55,7 +55,11 @@ export function useMoverEquipo(): UseMoverEquipoResult {
 
         const ctx: ServiceContext = {
           tenantId,
-          actor: { uid: user.uid, email: user.email ?? undefined },
+          actor: { 
+            uid: user.uid, 
+            email: user.email ?? undefined,
+            tenantId: claims?.tenantId,
+          },
         };
 
         const equiposService = new EquiposService(db);
@@ -82,7 +86,7 @@ export function useMoverEquipo(): UseMoverEquipoResult {
         setLoading(false);
       }
     },
-    [tenantId, user, success, mostrarError]
+    [tenantId, user, claims, success, mostrarError]
   );
 
   return { mover, loading, error };

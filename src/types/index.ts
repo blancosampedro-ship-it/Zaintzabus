@@ -412,7 +412,10 @@ export interface AuditLog {
   usuarioId: string;
   usuarioEmail: string;
   usuarioRol: string;
+  /** Tenant de origen del usuario que realiza la acción (para cross-tenant) */
+  actorTenantId?: string;
   timestamp: Timestamp;
+  /** Tenant donde se realizó la acción */
   tenantId: string;
   ip?: string;
   userAgent?: string;

@@ -16,11 +16,11 @@ async function main() {
   
   await auth.setCustomUserClaims(user.uid, { 
     rol: 'admin', 
-    tenantId: 'ekialdebus',  // CORREGIDO: era ekialdebus-26
+    tenantId: 'lurraldebus-gipuzkoa',
     dfg: false
   });
   
-  console.log('✅ HECHO! admin@zaintzabus.com ahora tiene tenantId: ekialdebus');
+  console.log('✅ HECHO! admin@zaintzabus.com ahora tiene tenantId: lurraldebus-gipuzkoa');
   console.log('👉 Cierra sesión y vuelve a entrar para ver los 56 buses');
   process.exit(0);
 }

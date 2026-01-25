@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOperadorContext } from '@/contexts/OperadorContext';
 import {
   collection,
   query,
@@ -28,6 +29,7 @@ import {
 
 export default function AdminUsuariosPage() {
   const { user, claims, hasRole } = useAuth();
+  const { operadorActualId } = useOperadorContext();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -75,14 +77,14 @@ export default function AdminUsuariosPage() {
 
   useEffect(() => {
     loadUsuarios();
-  }, [claims?.tenantId]);
+  }, [operadorActualId]);
 
   const loadUsuarios = async () => {
-    if (!claims?.tenantId) return;
+    if (!operadorActualId) return;
 
     setLoading(true);
     try {
-      const usuariosRef = collection(db, `tenants/${claims.tenantId}/usuarios`);
+      const usuariosRef = collection(db, `tenants/${operadorActualId}/usuarios`);
       const q = query(usuariosRef);
       const snapshot = await getDocs(q);
       
@@ -129,7 +131,7 @@ export default function AdminUsuariosPage() {
   };
 
   const handleSave = async () => {
-    if (!claims?.tenantId || !user) return;
+    if (!operadorActualId || !user) return;
 
     setSaving(true);
     try {
@@ -144,7 +146,7 @@ export default function AdminUsuariosPage() {
             password: formData.password || undefined,
             nombre: formData.nombre,
             rol: formData.rol,
-            tenantId: claims.tenantId,
+            tenantId: operadorActualId,
             activo: formData.activo,
           }),
         });
@@ -155,7 +157,7 @@ export default function AdminUsuariosPage() {
         }
 
         await registrarAuditoria({
-          tenantId: claims.tenantId,
+          tenantId: operadorActualId,
           accion: 'update',
           coleccion: 'usuarios',
           documentoId: editingUser.id,
@@ -176,7 +178,7 @@ export default function AdminUsuariosPage() {
             password: formData.password,
             nombre: formData.nombre,
             rol: formData.rol,
-            tenantId: claims.tenantId,
+            tenantId: operadorActualId,
             activo: formData.activo,
           }),
         });
@@ -187,7 +189,7 @@ export default function AdminUsuariosPage() {
         }
 
         await registrarAuditoria({
-          tenantId: claims.tenantId,
+          tenantId: operadorActualId,
           accion: 'create',
           coleccion: 'usuarios',
           documentoId: result.uid,
@@ -211,11 +213,11 @@ export default function AdminUsuariosPage() {
   };
 
   const handleDelete = async (usuario: Usuario) => {
-    if (!claims?.tenantId || !user) return;
+    if (!operadorActualId || !user) return;
     if (!confirm(`¿Estás seguro de eliminar al usuario ${usuario.nombre}?`)) return;
 
     try {
-      const response = await fetch(`/api/users?uid=${usuario.id}&tenantId=${claims.tenantId}`, {
+      const response = await fetch(`/api/users?uid=${usuario.id}&tenantId=${operadorActualId}`, {
         method: 'DELETE',
       });
 
@@ -225,7 +227,7 @@ export default function AdminUsuariosPage() {
       }
 
       await registrarAuditoria({
-        tenantId: claims.tenantId,
+        tenantId: operadorActualId,
         accion: 'delete',
         coleccion: 'usuarios',
         documentoId: usuario.id,

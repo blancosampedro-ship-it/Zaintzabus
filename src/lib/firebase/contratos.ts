@@ -31,7 +31,8 @@ import type {
 const getContratosRef = (tenantId: string) =>
   collection(db, `tenants/${tenantId}/contratos`);
 
-const getOperadoresRef = () => collection(db, 'operadores');
+// Nota: Los "operadores" están modelados como tenants (colección raíz)
+const getTenantsRef = () => collection(db, 'tenants');
 
 // ============================================
 // CONTRATOS - CRUD
@@ -202,10 +203,10 @@ export async function subirDocumentoContrato(
 // ============================================
 
 /**
- * Obtiene todos los operadores
+ * Obtiene todos los operadores (tenants)
  */
 export async function getOperadores(): Promise<Operador[]> {
-  const q = query(getOperadoresRef(), orderBy('nombre', 'asc'));
+  const q = query(getTenantsRef(), orderBy('nombre', 'asc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({
     id: doc.id,
@@ -214,33 +215,29 @@ export async function getOperadores(): Promise<Operador[]> {
 }
 
 /**
- * Obtiene operadores activos
+ * Obtiene operadores activos (tenants activos)
  */
 export async function getOperadoresActivos(): Promise<Operador[]> {
-  const q = query(
-    getOperadoresRef(),
-    where('activo', '==', true),
-    orderBy('nombre', 'asc')
-  );
+  // Obtener todos y filtrar en cliente para evitar necesidad de índice compuesto
+  const q = query(getTenantsRef(), orderBy('nombre', 'asc'));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Operador[];
+  return snapshot.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }) as Operador)
+    .filter((t) => t.activo !== false); // Incluir si activo es true o undefined
 }
 
 /**
- * Obtiene un operador por ID
+ * Obtiene un operador por ID (tenant)
  */
 export async function getOperador(operadorId: string): Promise<Operador | null> {
-  const docRef = doc(getOperadoresRef(), operadorId);
+  const docRef = doc(getTenantsRef(), operadorId);
   const snapshot = await getDoc(docRef);
   if (!snapshot.exists()) return null;
   return { id: snapshot.id, ...snapshot.data() } as Operador;
 }
 
 /**
- * Crea un nuevo operador
+ * Crea un nuevo operador (tenant)
  */
 export async function crearOperador(
   data: Omit<Operador, 'id' | 'auditoria' | 'fechaAlta'>,
@@ -253,7 +250,7 @@ export async function crearOperador(
     updatedBy: userId,
   };
 
-  const docRef = await addDoc(getOperadoresRef(), {
+  const docRef = await addDoc(getTenantsRef(), {
     ...data,
     fechaAlta: serverTimestamp(),
     auditoria,
@@ -263,14 +260,14 @@ export async function crearOperador(
 }
 
 /**
- * Actualiza un operador
+ * Actualiza un operador (tenant)
  */
 export async function actualizarOperador(
   operadorId: string,
   data: Partial<Omit<Operador, 'id' | 'auditoria' | 'fechaAlta'>>,
   userId: string
 ): Promise<void> {
-  const docRef = doc(getOperadoresRef(), operadorId);
+  const docRef = doc(getTenantsRef(), operadorId);
   await updateDoc(docRef, {
     ...data,
     'auditoria.updatedAt': serverTimestamp(),

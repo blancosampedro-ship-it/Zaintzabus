@@ -115,10 +115,11 @@ service cloud.firestore {
     // ============================================
     
     match /tenants/{tenantId} {
-      // Lectura individual: usuarios del tenant o DFG/admin
-      allow read: if canAccessTenant(tenantId);
-      // Listar todos los tenants: solo admin y DFG pueden ver la lista completa
-      allow list: if canAccessAllTenants();
+      // Lectura individual (get): usuarios del tenant, DFG o admin
+      allow get: if canAccessTenant(tenantId);
+      // Listar todos los tenants (list/query): solo admin y DFG
+      // Usando comprobación directa para evitar problemas con hasAnyRole
+      allow list: if isAuthenticated() && (hasRole('dfg') || hasRole('admin'));
       // Escritura: solo admin puede modificar configuración de tenant
       allow write: if canConfigureSystem();
       
@@ -444,18 +445,18 @@ service cloud.firestore {
     }
     
     // ============================================
-    // GLOBAL COLLECTIONS (DFG Only)
+    // GLOBAL COLLECTIONS
     // ============================================
     
     // Global SLA targets and configuration
     match /sla_targets/{targetId} {
       allow read: if isAuthenticated();
-      allow write: if false;
+      allow write: if canConfigureSystem();
     }
     
     // Global reports and analytics
     match /global_reports/{reportId} {
-      allow read: if isDFG();
+      allow read: if isDFG() || isAdmin();
       allow write: if false;
     }
     
@@ -470,6 +471,41 @@ service cloud.firestore {
                     && !isDFG()
                     && resource.data.destinatarioId == request.auth.uid;
       allow delete: if false;
+    }
+    
+    // ==========================================
+    // CONFIGURACIÓN GLOBAL DEL SISTEMA
+    // ==========================================
+    
+    // Ubicaciones globales (almacenes, talleres, cocheras)
+    match /ubicaciones/{ubicacionId} {
+      allow read: if isAuthenticated();
+      allow write: if canConfigureSystem();
+    }
+    
+    // Laboratorios de calibración
+    match /laboratorios/{laboratorioId} {
+      allow read: if isAuthenticated();
+      allow write: if canConfigureSystem();
+    }
+    
+    // Tipos de equipo (catálogo)
+    match /tipos_equipo/{tipoId} {
+      allow read: if isAuthenticated();
+      allow write: if canConfigureSystem();
+    }
+    
+    // Logs de auditoría global
+    match /logs_auditoria/{logId} {
+      allow read: if canManage() || isDFG();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+    
+    // Configuración del sistema
+    match /config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if canConfigureSystem();
     }
     
     // ============================================

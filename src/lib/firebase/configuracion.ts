@@ -461,7 +461,7 @@ export async function getEstadisticasSistema(tenantId: string): Promise<{
     otsSnap,
   ] = await Promise.all([
     getDocs(collection(db, `tenants/${tenantId}/usuarios`)),
-    getDocs(collection(db, 'operadores')),
+    getDocs(collection(db, 'tenants')),
     getDocs(collection(db, `tenants/${tenantId}/autobuses`)),
     getDocs(collection(db, `tenants/${tenantId}/equipos`)),
     getDocs(collection(db, `tenants/${tenantId}/incidencias`)),

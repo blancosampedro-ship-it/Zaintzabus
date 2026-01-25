@@ -268,8 +268,8 @@ export async function getKPIsGlobales(tenantId?: string): Promise<KPIsGlobales> 
  */
 export async function getMetricasPorOperador(): Promise<MetricasOperador[]> {
   try {
-    // Obtener lista de operadores
-    const operadoresRef = collection(db, 'operadores');
+    // Obtener lista de operadores (tenants)
+    const operadoresRef = collection(db, 'tenants');
     const operadoresSnap = await getDocs(operadoresRef);
     
     const metricas: MetricasOperador[] = [];

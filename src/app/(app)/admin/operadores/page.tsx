@@ -280,7 +280,7 @@ export default function AdminOperadoresPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-slate-100">{operador.nombre}</h3>
-                        <Badge variant="outline">{operador.codigo}</Badge>
+                        <Badge variant="outline">{operador.codigo || operador.id}</Badge>
                         {operador.activo ? (
                           <Badge variant="default">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -294,25 +294,31 @@ export default function AdminOperadoresPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-4 mt-1 text-sm text-slate-400">
-                        <span>{operador.cif}</span>
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {operador.direccion.ciudad}
-                        </span>
+                        <span>{operador.cif || operador.id}</span>
+                        {(operador.direccion?.ciudad || operador.direccionCochera?.municipio) && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {operador.direccion?.ciudad || operador.direccionCochera?.municipio}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-6">
                     <div className="text-right text-sm">
-                      <p className="flex items-center gap-1 text-slate-400">
-                        <Mail className="h-3 w-3" />
-                        {operador.contacto.email}
-                      </p>
-                      <p className="flex items-center gap-1 text-slate-400">
-                        <Phone className="h-3 w-3" />
-                        {operador.contacto.telefono}
-                      </p>
+                      {operador.contacto?.email && (
+                        <p className="flex items-center gap-1 text-slate-400">
+                          <Mail className="h-3 w-3" />
+                          {operador.contacto.email}
+                        </p>
+                      )}
+                      {operador.contacto?.telefono && (
+                        <p className="flex items-center gap-1 text-slate-400">
+                          <Phone className="h-3 w-3" />
+                          {operador.contacto.telefono}
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">

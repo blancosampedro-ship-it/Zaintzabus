@@ -183,7 +183,7 @@ export function useOperadoresList(): UseOperadoresListResult {
     const cargar = async () => {
       try {
         setLoading(true);
-        const operadoresRef = collection(db, 'operadores');
+        const operadoresRef = collection(db, 'tenants');
         const snap = await getDocs(operadoresRef);
         
         const data: Operador[] = snap.docs.map(doc => ({

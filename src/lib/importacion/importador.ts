@@ -269,8 +269,8 @@ export async function importarTecnicos(
   });
 
   // Obtener emails existentes
-  const usuariosRef = collection(db, 'usuarios');
-  const existentesSnap = await getDocs(query(usuariosRef, where('tenantId', '==', tenantId)));
+  const usuariosRef = collection(db, `tenants/${tenantId}/usuarios`);
+  const existentesSnap = await getDocs(usuariosRef);
   const emailsExistentes = new Set(
     existentesSnap.docs.map((d) => String(d.data().email || '').toLowerCase())
   );
@@ -592,8 +592,8 @@ async function obtenerMapeoActivos(tenantId: string): Promise<Map<string, string
 
 async function obtenerMapeoTecnicos(tenantId: string): Promise<Map<string, string>> {
   const mapeo = new Map<string, string>();
-  const usuariosRef = collection(db, 'usuarios');
-  const snap = await getDocs(query(usuariosRef, where('tenantId', '==', tenantId)));
+  const usuariosRef = collection(db, `tenants/${tenantId}/usuarios`);
+  const snap = await getDocs(usuariosRef);
   
   snap.docs.forEach((doc) => {
     const data = doc.data();

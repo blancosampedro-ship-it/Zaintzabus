@@ -31,25 +31,20 @@ async function main() {
     });
   }
   
-  // Verificar específicamente ekialdebus
-  console.log('\n🔍 Verificando tenant "ekialdebus"...');
-  const ekialdeDoc = await db.collection('tenants').doc('ekialdebus').get();
+  // Verificar autobuses en tenant y en raíz
+  console.log('\n🔍 Verificando ubicación de autobuses...');
   
-  if (ekialdeDoc.exists) {
-    console.log('✅ Existe el tenant ekialdebus');
-    
-    // Verificar autobuses
-    const autobusesSnap = await db.collection('tenants/ekialdebus/autobuses').get();
-    console.log(`   📦 Autobuses: ${autobusesSnap.size}`);
-    
-    // Verificar equipos
-    const equiposSnap = await db.collection('tenants/ekialdebus/equipos').get();
-    console.log(`   📦 Equipos: ${equiposSnap.size}`);
-    
-  } else {
-    console.log('❌ NO existe el tenant "ekialdebus"');
-    console.log('\n   Tenants disponibles:', tenantsSnap.docs.map(d => d.id).join(', '));
-  }
+  const autobusesRaiz = await db.collection('autobuses').limit(5).get();
+  console.log(`📦 Autobuses en /autobuses (raíz): ${autobusesRaiz.size}`);
+  
+  const autobusesTenant = await db.collection('tenants/lurraldebus-gipuzkoa/autobuses').get();
+  console.log(`📦 Autobuses en /tenants/lurraldebus-gipuzkoa/autobuses: ${autobusesTenant.size}`);
+  
+  const equiposRaiz = await db.collection('equipos').limit(5).get();
+  console.log(`📦 Equipos en /equipos (raíz): ${equiposRaiz.size}`);
+  
+  const equiposTenant = await db.collection('tenants/lurraldebus-gipuzkoa/equipos').get();
+  console.log(`📦 Equipos en /tenants/lurraldebus-gipuzkoa/equipos: ${equiposTenant.size}`);
   
   process.exit(0);
 }

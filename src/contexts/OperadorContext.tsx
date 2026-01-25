@@ -145,6 +145,11 @@ export function useTenantId(): string | null {
   const { claims } = useAuth();
   const { operadorActualId, puedeSeleccionarOperador } = useOperadorContext();
 
+  // DEBUG
+  console.log('[useTenantId] claims:', claims, '| puedeSeleccionar:', puedeSeleccionarOperador, '| operadorActualId:', operadorActualId);
+
   // Si es WINFIN, usa el operador seleccionado; si no, usa su tenantId
-  return puedeSeleccionarOperador ? operadorActualId : (claims?.tenantId ?? null);
+  const result = puedeSeleccionarOperador ? operadorActualId : (claims?.tenantId ?? null);
+  console.log('[useTenantId] resultado:', result);
+  return result;
 }

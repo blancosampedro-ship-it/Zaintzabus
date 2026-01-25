@@ -103,7 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const tokenResult = await firebaseUser.getIdTokenResult();
+        // Forzar refresh del token para obtener claims actualizados
+        const tokenResult = await firebaseUser.getIdTokenResult(true);
         const rawClaims = tokenResult.claims as Record<string, unknown>;
 
         const rol = normalizeRol(typeof rawClaims.rol === 'string' ? rawClaims.rol : undefined);

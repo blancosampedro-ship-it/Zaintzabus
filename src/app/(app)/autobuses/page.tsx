@@ -111,25 +111,32 @@ export default function AutobusesPage() {
   const [view, setView] = React.useState<'grid' | 'table'>('grid');
   const [busToDelete, setBusToDelete] = React.useState<Autobus | null>(null);
 
+  // DEBUG: Ver qué tenantId tenemos
+  console.log('[Autobuses] DEBUG tenantId:', tenantId, '| tipo:', typeof tenantId);
+
   React.useEffect(() => {
+    console.log('[Autobuses] useEffect - tenantId:', tenantId);
     if (tenantId) {
       loadData();
+    } else {
+      console.warn('[Autobuses] No hay tenantId, no se cargan datos');
+      setLoading(false);
     }
   }, [tenantId]);
 
   const loadData = async () => {
     if (!tenantId) return;
     
+    console.log('[Autobuses] Cargando datos para tenant:', tenantId);
     setLoading(true);
     try {
       // Cargar activos reales de Firestore
       const activos = await getActivos(tenantId);
+      console.log('[Autobuses] getActivos retornó:', activos.length, 'items');
       
-      // Filtrar solo autobuses (tipo 'autobus')
-      const autobusesActivos = activos.filter(a => a.tipo === 'autobus');
-      
+      // Todos los documentos en la colección 'autobuses' son autobuses por definición
       // Convertir Activos a formato Autobus para la UI
-      const autobusesData = autobusesActivos.map(activoToAutobus);
+      const autobusesData = activos.map(activoToAutobus);
       setAutobuses(autobusesData);
 
       // Extraer marcas únicas para el filtro

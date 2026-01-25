@@ -383,6 +383,60 @@ service cloud.firestore {
         // Write: gestores
         allow write: if canWriteToTenant(tenantId) && canManage();
       }
+      
+      // ==========================================
+      // AUTOBUSES SUBCOLLECTION
+      // Permisos: activos:ver, activos:crear, activos:editar
+      // ==========================================
+      
+      match /autobuses/{autobusId} {
+        // Read: cualquier usuario con acceso al tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Create: gestores pueden crear autobuses
+        allow create: if canWriteToTenant(tenantId) && canManage();
+        
+        // Update: técnicos y gestores pueden actualizar
+        allow update: if canWriteToTenant(tenantId) && canExecuteWork();
+        
+        // Delete: solo gestores (preferir soft delete)
+        allow delete: if canWriteToTenant(tenantId) && canManage();
+      }
+      
+      // ==========================================
+      // EQUIPOS SUBCOLLECTION
+      // Permisos: inventario:ver, inventario:crear, inventario:mover
+      // ==========================================
+      
+      match /equipos/{equipoId} {
+        // Read: cualquier usuario con acceso al tenant
+        allow read: if canAccessTenant(tenantId);
+        
+        // Create: técnicos y gestores pueden crear equipos
+        allow create: if canWriteToTenant(tenantId) && canExecuteWork();
+        
+        // Update: técnicos y gestores pueden actualizar
+        allow update: if canWriteToTenant(tenantId) && canExecuteWork();
+        
+        // Delete: solo gestores (preferir soft delete)
+        allow delete: if canWriteToTenant(tenantId) && canManage();
+        
+        // Movimientos de equipos
+        match /movimientos/{movId} {
+          allow read: if canAccessTenant(tenantId);
+          allow create: if canWriteToTenant(tenantId) && canExecuteWork();
+          allow update, delete: if false; // Inmutables
+        }
+      }
+      
+      // ==========================================
+      // OPERADORES SUBCOLLECTION (dentro de tenant)
+      // ==========================================
+      
+      match /operadores/{operadorId} {
+        allow read: if canAccessTenant(tenantId);
+        allow write: if canWriteToTenant(tenantId) && canManage();
+      }
     }
     
     // ============================================

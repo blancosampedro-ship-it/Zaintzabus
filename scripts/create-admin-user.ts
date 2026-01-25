@@ -1,0 +1,96 @@
+﻿/**
+ * Script para crear un usuario de prueba en Firebase Auth + Firestore
+ * 
+ * Uso:
+ *   npx tsx scripts/create-test-user.ts
+ *
+ * Requisito: tener ./scripts/serviceAccountKey.json con las credenciales de servicio.
+ */
+
+import * as admin from 'firebase-admin';
+import * as path from 'path';
+
+// â€”â€”â€” ConfiguraciÃ³n del usuario de prueba â€”â€”â€”
+const TEST_USER = {
+  email: 'admin@zaintzabus.com',
+  password: 'Test1234!',
+  displayName: 'Administrador',
+  rol: 'admin' as const,
+  tenantId: 'lurraldebus-gipuzkoa',
+};
+
+// â€”â€”â€” Inicializar Admin SDK â€”â€”â€”
+const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const serviceAccount = require(serviceAccountPath);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const auth = admin.auth();
+const db = admin.firestore();
+
+async function main() {
+  console.log('ðŸ”§ Creando usuario de prueba...\n');
+
+  let userRecord: admin.auth.UserRecord;
+
+  try {
+    // Intentar obtener usuario existente
+    userRecord = await auth.getUserByEmail(TEST_USER.email);
+    console.log(`â„¹ï¸  Usuario ya existe: ${userRecord.uid}`);
+  } catch (err: unknown) {
+    // Si no existe, crearlo
+    if ((err as { code?: string }).code === 'auth/user-not-found') {
+      userRecord = await auth.createUser({
+        email: TEST_USER.email,
+        password: TEST_USER.password,
+        displayName: TEST_USER.displayName,
+        emailVerified: true,
+      });
+      console.log(`âœ… Usuario creado en Auth: ${userRecord.uid}`);
+    } else {
+      throw err;
+    }
+  }
+
+  // Establecer custom claims (rol + tenantId)
+  await auth.setCustomUserClaims(userRecord.uid, {
+    rol: TEST_USER.rol,
+    tenantId: TEST_USER.tenantId,
+  });
+  console.log(`âœ… Claims asignados: rol=${TEST_USER.rol}, tenantId=${TEST_USER.tenantId}`);
+
+  // Crear/actualizar documento en Firestore
+  const userDocRef = db.doc(`tenants/${TEST_USER.tenantId}/usuarios/${userRecord.uid}`);
+  await userDocRef.set(
+    {
+      id: userRecord.uid,
+      email: TEST_USER.email,
+      nombre: 'Usuario',
+      apellidos: 'de Prueba',
+      rol: TEST_USER.rol,
+      tenantId: TEST_USER.tenantId,
+      activo: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  console.log(`âœ… Documento creado/actualizado en Firestore: tenants/${TEST_USER.tenantId}/usuarios/${userRecord.uid}`);
+
+  console.log('\nâ€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”');
+  console.log('ðŸŽ‰ Usuario de prueba listo:');
+  console.log(`   Email:    ${TEST_USER.email}`);
+  console.log(`   Password: ${TEST_USER.password}`);
+  console.log('â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”\n');
+
+  process.exit(0);
+}
+
+main().catch((err) => {
+  console.error('âŒ Error:', err);
+  process.exit(1);
+});
+

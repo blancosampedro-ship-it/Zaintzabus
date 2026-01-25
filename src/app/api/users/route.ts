@@ -1,25 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { initializeApp, getApps, cert, type App } from 'firebase-admin/app';
+import { getAuth, type Auth } from 'firebase-admin/auth';
+import { getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
 
-// Inicializar Firebase Admin si no está inicializado
-if (!getApps().length) {
-  try {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    });
-  } catch (error) {
-    console.error('Error initializing Firebase Admin:', error);
+// Inicialización lazy para evitar errores durante el build
+let adminApp: App | null = null;
+let adminAuth: Auth | null = null;
+let adminDb: Firestore | null = null;
+
+function getAdminApp(): App {
+  if (!adminApp) {
+    if (getApps().length > 0) {
+      adminApp = getApps()[0];
+    } else {
+      const projectId = process.env.FIREBASE_PROJECT_ID || process.env.FIREBASE_ADMIN_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+      const privateKey = (process.env.FIREBASE_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY)?.replace(/\\n/g, '\n');
+
+      if (!projectId || !clientEmail || !privateKey) {
+        throw new Error('Firebase Admin no está configurado. Verifica las variables de entorno.');
+      }
+
+      adminApp = initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
+      });
+    }
   }
+  return adminApp;
 }
 
-const adminAuth = getAuth();
-const adminDb = getFirestore();
+function getAdminAuth(): Auth {
+  if (!adminAuth) {
+    adminAuth = getAuth(getAdminApp());
+  }
+  return adminAuth;
+}
+
+function getAdminDb(): Firestore {
+  if (!adminDb) {
+    adminDb = getFirestore(getAdminApp());
+  }
+  return adminDb;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear usuario en Firebase Auth
-    const userRecord = await adminAuth.createUser({
+    const userRecord = await getAdminAuth().createUser({
       email,
       password,
       displayName: nombre,
@@ -49,7 +75,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Establecer custom claims para el rol
-    await adminAuth.setCustomUserClaims(userRecord.uid, {
+    await getAdminAuth().setCustomUserClaims(userRecord.uid, {
       rol,
       tenantId,
     });
@@ -66,7 +92,7 @@ export async function POST(request: NextRequest) {
       updatedAt: Timestamp.now(),
     };
 
-    await adminDb
+    await getAdminDb()
       .collection(`tenants/${tenantId}/usuarios`)
       .doc(userRecord.uid)
       .set(userDoc);
@@ -111,7 +137,7 @@ export async function PUT(request: NextRequest) {
     
     // Verificar si el usuario existe en Firebase Auth
     try {
-      await adminAuth.getUser(uid);
+      await getAdminAuth().getUser(uid);
     } catch (error: unknown) {
       const authError = error as { code?: string };
       if (authError.code === 'auth/user-not-found') {
@@ -136,7 +162,7 @@ export async function PUT(request: NextRequest) {
       
       try {
         // Crear usuario en Auth con el UID existente de Firestore
-        await adminAuth.createUser({
+        await getAdminAuth().createUser({
           uid, // Usar el mismo UID de Firestore
           email,
           password: tempPassword,
@@ -145,7 +171,7 @@ export async function PUT(request: NextRequest) {
         });
 
         // Establecer custom claims
-        await adminAuth.setCustomUserClaims(uid, {
+        await getAdminAuth().setCustomUserClaims(uid, {
           rol,
           tenantId,
         });
@@ -159,7 +185,7 @@ export async function PUT(request: NextRequest) {
         if (rol) updateDoc.rol = rol;
         if (typeof activo === 'boolean') updateDoc.activo = activo;
 
-        await adminDb
+        await getAdminDb()
           .collection(`tenants/${tenantId}/usuarios`)
           .doc(uid)
           .update(updateDoc);
@@ -195,12 +221,12 @@ export async function PUT(request: NextRequest) {
     if (password && password.length >= 6) updateData.password = password;
 
     if (Object.keys(updateData).length > 0) {
-      await adminAuth.updateUser(uid, updateData);
+      await getAdminAuth().updateUser(uid, updateData);
     }
 
     // Actualizar custom claims si cambió el rol
     if (rol) {
-      await adminAuth.setCustomUserClaims(uid, {
+      await getAdminAuth().setCustomUserClaims(uid, {
         rol,
         tenantId,
       });
@@ -215,7 +241,7 @@ export async function PUT(request: NextRequest) {
     if (rol) updateDoc.rol = rol;
     if (typeof activo === 'boolean') updateDoc.activo = activo;
 
-    await adminDb
+    await getAdminDb()
       .collection(`tenants/${tenantId}/usuarios`)
       .doc(uid)
       .update(updateDoc);
@@ -248,10 +274,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Eliminar usuario de Firebase Auth
-    await adminAuth.deleteUser(uid);
+    await getAdminAuth().deleteUser(uid);
 
     // Eliminar documento de Firestore
-    await adminDb
+    await getAdminDb()
       .collection(`tenants/${tenantId}/usuarios`)
       .doc(uid)
       .delete();

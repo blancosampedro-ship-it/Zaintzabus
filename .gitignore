@@ -118,3 +118,4 @@ lerna-debug.log*
 # Cache
 .cache/
 *.cache
+.env*.local

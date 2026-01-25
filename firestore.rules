@@ -115,8 +115,10 @@ service cloud.firestore {
     // ============================================
     
     match /tenants/{tenantId} {
-      // Lectura: usuarios del tenant o DFG/admin
+      // Lectura individual: usuarios del tenant o DFG/admin
       allow read: if canAccessTenant(tenantId);
+      // Listar todos los tenants: solo admin y DFG pueden ver la lista completa
+      allow list: if canAccessAllTenants();
       // Escritura: solo admin puede modificar configuración de tenant
       allow write: if canConfigureSystem();
       

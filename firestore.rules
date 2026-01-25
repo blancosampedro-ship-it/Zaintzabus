@@ -98,9 +98,11 @@ service cloud.firestore {
       return canAccessAllTenants() || belongsToTenant(tenantId);
     }
     
-    // DFG es solo lectura - nunca escribe datos operativos
+    // Puede escribir en un tenant:
+    // - Usuario del propio tenant (excepto DFG que es solo lectura)
+    // - Admin global puede escribir en cualquier tenant
     function canWriteToTenant(tenantId) {
-      return belongsToTenant(tenantId) && !isDFG();
+      return (belongsToTenant(tenantId) && !isDFG()) || isAdmin();
     }
     
     // Validate timestamp is server timestamp

@@ -11,17 +11,17 @@ import type { Tenant } from '@/types';
 // ============================================
 
 interface OperadorContextType {
-  /** Operador actual (para operadores es su tenant, para WINFIN es el seleccionado) */
+  /** Operador actual (para usuarios normales es su tenant, para DFG/Admin es el seleccionado) */
   operadorActual: Tenant | null;
   /** ID del operador actual */
   operadorActualId: string | null;
-  /** Lista de operadores disponibles (solo WINFIN ve todos) */
+  /** Lista de operadores disponibles (solo roles supervisores ven todos) */
   operadores: Tenant[];
-  /** True si el usuario es WINFIN y puede cambiar de operador */
+  /** True si el usuario puede cambiar de operador (DFG o Admin) */
   puedeSeleccionarOperador: boolean;
-  /** Cambia el operador seleccionado (solo WINFIN) */
+  /** Cambia el operador seleccionado (solo DFG/Admin) */
   seleccionarOperador: (operadorId: string) => void;
-  /** Limpia la selección (solo WINFIN) */
+  /** Limpia la selección (solo DFG/Admin) */
   limpiarSeleccion: () => void;
   /** Loading mientras carga operadores */
   loading: boolean;
@@ -38,23 +38,24 @@ const OperadorContext = createContext<OperadorContextType | undefined>(undefined
 const STORAGE_KEY = 'zaintzabus_operador_seleccionado';
 
 export function OperadorProvider({ children }: { children: React.ReactNode }) {
-  const { claims, loading: authLoading, isDFG } = useAuth();
+  const { claims, loading: authLoading, isDFG, hasRole } = useAuth();
   
   const [operadores, setOperadores] = useState<Tenant[]>([]);
   const [operadorSeleccionadoId, setOperadorSeleccionadoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const esWinfin = isDFG();
-  const puedeSeleccionarOperador = esWinfin;
+  // Roles que pueden seleccionar operador: DFG (solo lectura) y Admin (gestión global)
+  const esRolSupervisor = isDFG() || hasRole('admin');
+  const puedeSeleccionarOperador = esRolSupervisor;
 
-  // Cargar operadores al iniciar (si es WINFIN)
+  // Cargar operadores al iniciar (si es rol supervisor: DFG o Admin)
   useEffect(() => {
     if (authLoading) return;
 
     async function cargarOperadores() {
-      if (!esWinfin) {
-        // Usuario operador: no necesita lista, su operador es su tenantId
+      if (!esRolSupervisor) {
+        // Usuario normal: no necesita lista, su operador es su tenantId
         setOperadores([]);
         setLoading(false);
         return;
@@ -85,13 +86,13 @@ export function OperadorProvider({ children }: { children: React.ReactNode }) {
     }
 
     cargarOperadores();
-  }, [authLoading, esWinfin]);
+  }, [authLoading, esRolSupervisor]);
 
   // Determinar operador actual
-  const operadorActualId = esWinfin ? operadorSeleccionadoId : (claims?.tenantId ?? null);
-  const operadorActual = esWinfin
+  const operadorActualId = esRolSupervisor ? operadorSeleccionadoId : (claims?.tenantId ?? null);
+  const operadorActual = esRolSupervisor
     ? operadores.find((op) => op.id === operadorSeleccionadoId) ?? null
-    : null; // Para operadores, el contexto no carga su propio Tenant (ya está en claims)
+    : null; // Para usuarios normales, el contexto no carga su propio Tenant (ya está en claims)
 
   const seleccionarOperador = useCallback(
     (operadorId: string) => {
@@ -140,16 +141,14 @@ export function useOperadorContext() {
 /**
  * Hook helper que devuelve el tenantId actual para queries.
  * Útil en hooks de datos para no repetir lógica.
+ * 
+ * - Si el usuario es DFG/Admin: devuelve el operador seleccionado
+ * - Si el usuario es de otro rol: devuelve su tenantId del claim
  */
 export function useTenantId(): string | null {
   const { claims } = useAuth();
   const { operadorActualId, puedeSeleccionarOperador } = useOperadorContext();
 
-  // DEBUG
-  console.log('[useTenantId] claims:', claims, '| puedeSeleccionar:', puedeSeleccionarOperador, '| operadorActualId:', operadorActualId);
-
-  // Si es WINFIN, usa el operador seleccionado; si no, usa su tenantId
-  const result = puedeSeleccionarOperador ? operadorActualId : (claims?.tenantId ?? null);
-  console.log('[useTenantId] resultado:', result);
-  return result;
+  // Si es rol supervisor (DFG/Admin), usa el operador seleccionado; si no, usa su tenantId
+  return puedeSeleccionarOperador ? operadorActualId : (claims?.tenantId ?? null);
 }

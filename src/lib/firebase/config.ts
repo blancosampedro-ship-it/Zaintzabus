@@ -15,6 +15,15 @@ const firebaseConfig = {
 
 const isBrowser = typeof window !== 'undefined';
 
+// DEBUG: Log temporal para diagnosticar problema en producción
+if (isBrowser) {
+  console.log('[Firebase Debug] Config:', {
+    hasApiKey: !!firebaseConfig.apiKey,
+    hasProjectId: !!firebaseConfig.projectId,
+    projectId: firebaseConfig.projectId,
+  });
+}
+
 export function isFirebaseClientConfigured(): boolean {
   return hasFirebaseClientEnv();
 }

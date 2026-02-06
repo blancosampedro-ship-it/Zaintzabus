@@ -50,7 +50,6 @@ export class EquiposService extends BaseFirestoreService<Equipo> {
     super(
       db,
       (ctx) => {
-        if (!ctx.tenantId) throw new Error('tenantId requerido');
         return `tenants/${ctx.tenantId}/equipos`;
       },
       { enabled: true, entidad: 'inventario' } // Auditoría habilitada
@@ -58,7 +57,7 @@ export class EquiposService extends BaseFirestoreService<Equipo> {
   }
 
   private movimientosColPath(ctx: ServiceContext) {
-    if (!ctx.tenantId) throw new Error('tenantId requerido');
+    this.validateContext(ctx);
     return `tenants/${ctx.tenantId}/movimientosEquipo`;
   }
 

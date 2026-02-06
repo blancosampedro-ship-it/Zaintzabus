@@ -52,6 +52,10 @@ export {
 // Local storage
 export { useLocalStorage, useSessionStorage } from './useLocalStorage';
 
+// Service layer helpers
+export * from './useServiceContext';
+export * from './useServiceCall';
+
 // Hooks de datos
 export * from './useOperadores';
 export * from './useAutobuses';

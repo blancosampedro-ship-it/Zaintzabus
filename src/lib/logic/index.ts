@@ -86,6 +86,11 @@ export {
   esActivoDisponible,
   esEquipoDisponible,
   
+  // Órdenes de trabajo
+  esTransicionValidaOT,
+  obtenerSiguientesEstadosOT,
+  esOTFinalizada,
+  
   // Constantes
   TRANSICIONES_INCIDENCIA,
   PERMISOS_TRANSICION_INCIDENCIA,

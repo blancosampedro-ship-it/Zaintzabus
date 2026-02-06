@@ -4,10 +4,13 @@ import { BaseFirestoreService, type ServiceContext, type ListOptions } from '@/l
 
 export class TecnicosService extends BaseFirestoreService<Tecnico> {
   constructor(db: Firestore) {
-    super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
-      return `tenants/${ctx.tenantId}/tecnicos`;
-    });
+    super(
+      db,
+      (ctx) => {
+        return `tenants/${ctx.tenantId}/tecnicos`;
+      },
+      { enabled: true, entidad: 'tecnico' } // Auditoría habilitada
+    );
   }
 
   listByEstado(ctx: ServiceContext, estado: EstadoTecnico, options: Omit<ListOptions, 'filters'> = {}) {

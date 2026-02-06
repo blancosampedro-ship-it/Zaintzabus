@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { db } from '@/lib/firebase/config';
-import { AutobusesService, EquiposService, type ServiceContext } from '@/lib/firebase/services';
-import { useTenantId } from '@/contexts/OperadorContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { AutobusesService, EquiposService } from '@/lib/firebase/services';
+import { useServiceContext } from '@/hooks/useServiceContext';
 import type { Autobus, Equipo, EstadoAutobus } from '@/types';
 
 // ============================================
@@ -27,8 +25,7 @@ interface UseAutobusesResult {
 }
 
 export function useAutobuses(filtros: FiltrosAutobuses = {}): UseAutobusesResult {
-  const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { ctx, db, isReady } = useServiceContext();
 
   const [autobuses, setAutobuses] = useState<Autobus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,16 +40,11 @@ export function useAutobuses(filtros: FiltrosAutobuses = {}): UseAutobusesResult
 
   const fetch = useCallback(
     async (append = false, startAfterDoc?: any) => {
-      if (!tenantId) {
+      if (!isReady) {
         setAutobuses([]);
         setLoading(false);
         return;
       }
-
-      const ctx: ServiceContext = {
-        tenantId,
-        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
-      };
 
       try {
         if (!append) setLoading(true);
@@ -94,7 +86,7 @@ export function useAutobuses(filtros: FiltrosAutobuses = {}): UseAutobusesResult
         setLoading(false);
       }
     },
-    [tenantId, user, operadorId, estado, pageSize]
+    [isReady, ctx, db, operadorId, estado, pageSize]
   );
 
   useEffect(() => {
@@ -120,8 +112,7 @@ interface UseAutobusResult {
 }
 
 export function useAutobus(id: string | null | undefined): UseAutobusResult {
-  const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { ctx, db, isReady } = useServiceContext();
 
   const [autobus, setAutobus] = useState<Autobus | null>(null);
   const [equipos, setEquipos] = useState<Equipo[]>([]);
@@ -129,7 +120,7 @@ export function useAutobus(id: string | null | undefined): UseAutobusResult {
   const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
-    if (!id || !tenantId) {
+    if (!id || !isReady) {
       setAutobus(null);
       setEquipos([]);
       setLoading(false);
@@ -139,11 +130,6 @@ export function useAutobus(id: string | null | undefined): UseAutobusResult {
     try {
       setLoading(true);
       setError(null);
-
-      const ctx: ServiceContext = {
-        tenantId,
-        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
-      };
 
       const autobusService = new AutobusesService(db);
       const equiposService = new EquiposService(db);
@@ -163,7 +149,7 @@ export function useAutobus(id: string | null | undefined): UseAutobusResult {
     } finally {
       setLoading(false);
     }
-  }, [id, tenantId, user]);
+  }, [id, isReady, ctx, db]);
 
   useEffect(() => {
     fetch();

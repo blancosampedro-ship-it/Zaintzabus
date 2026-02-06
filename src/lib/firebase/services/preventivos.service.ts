@@ -10,7 +10,6 @@ export class PreventivosService extends BaseFirestoreService<Preventivo> {
     super(
       db,
       (ctx) => {
-        if (!ctx.tenantId) throw new Error('tenantId requerido');
         return `tenants/${ctx.tenantId}/preventivos`;
       },
       { enabled: true, entidad: 'preventivo' } // Auditoría habilitada

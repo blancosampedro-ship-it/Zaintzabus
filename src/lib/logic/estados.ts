@@ -14,6 +14,7 @@ import type {
   EstadoIncidencia, 
   EstadoInventario, 
   EstadoActivo,
+  EstadoOT,
   Rol 
 } from '@/types';
 
@@ -364,4 +365,36 @@ export function getIconoEstadoIncidencia(estado: EstadoIncidencia): string {
     default:
       return 'Circle';
   }
+}
+
+// =============================================================================
+// ÓRDENES DE TRABAJO
+// =============================================================================
+
+/**
+ * Mapa de transiciones válidas para Órdenes de Trabajo.
+ * Extraído del servicio para mantener la lógica pura separada de Firebase.
+ */
+const TRANSICIONES_OT: Record<EstadoOT, EstadoOT[]> = {
+  pendiente: ['asignada', 'rechazada'],
+  asignada: ['en_curso', 'rechazada'],
+  en_curso: ['completada', 'rechazada'],
+  completada: ['validada', 'rechazada'],
+  validada: [],
+  rechazada: [],
+};
+
+/** Valida si un cambio de estado de OT es permitido. */
+export function esTransicionValidaOT(estadoActual: EstadoOT, nuevoEstado: EstadoOT): boolean {
+  return TRANSICIONES_OT[estadoActual]?.includes(nuevoEstado) ?? false;
+}
+
+/** Devuelve los estados a los que se puede transicionar desde el estado actual de una OT. */
+export function obtenerSiguientesEstadosOT(estadoActual: EstadoOT): EstadoOT[] {
+  return TRANSICIONES_OT[estadoActual] ?? [];
+}
+
+/** Indica si una OT está en un estado terminal (no puede transicionar más). */
+export function esOTFinalizada(estado: EstadoOT): boolean {
+  return estado === 'validada' || estado === 'rechazada';
 }

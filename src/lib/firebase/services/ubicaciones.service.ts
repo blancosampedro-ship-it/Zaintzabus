@@ -5,7 +5,6 @@ import { BaseFirestoreService, type ServiceContext, type ListOptions } from '@/l
 export class UbicacionesService extends BaseFirestoreService<Ubicacion> {
   constructor(db: Firestore) {
     super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
       return `tenants/${ctx.tenantId}/ubicaciones`;
     });
   }

@@ -6,10 +6,13 @@ import type { EquiposService } from '@/lib/firebase/services/equipos.service';
 
 export class AutobusesService extends BaseFirestoreService<Autobus> {
   constructor(db: Firestore) {
-    super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
-      return `tenants/${ctx.tenantId}/autobuses`;
-    });
+    super(
+      db,
+      (ctx) => {
+        return `tenants/${ctx.tenantId}/autobuses`;
+      },
+      { enabled: true, entidad: 'autobus' } // Auditoría habilitada
+    );
   }
 
   listByOperador(ctx: ServiceContext, operadorId: string, options: Omit<ListOptions, 'filters'> = {}) {

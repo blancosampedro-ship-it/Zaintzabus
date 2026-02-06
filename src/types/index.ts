@@ -406,7 +406,7 @@ export interface CambioAuditoria {
 
 export interface AuditLog {
   id: string;
-  entidad: 'incidencia' | 'inventario' | 'activo' | 'preventivo' | 'usuario';
+  entidad: 'incidencia' | 'inventario' | 'activo' | 'preventivo' | 'usuario' | 'ordenTrabajo' | 'autobus' | 'tecnico';
   entidadId: string;
   accion: 'crear' | 'actualizar' | 'eliminar' | 'cambio_estado';
   usuarioId: string;

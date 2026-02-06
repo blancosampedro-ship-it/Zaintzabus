@@ -353,14 +353,17 @@ export class AuditService {
 
   /**
    * Obtiene el historial de auditoría de una entidad específica.
+   * Requiere tenantId para evitar fugas cross-tenant.
    */
   async getHistorial(
     entidadId: string,
-    options: AuditQueryOptions = {}
+    options: AuditQueryOptions = {},
+    tenantId?: string
   ): Promise<AuditLog[]> {
     try {
       const constraints = [
         where('entidadId', '==', entidadId),
+        ...(tenantId ? [where('tenantId', '==', tenantId)] : []),
         orderBy('timestamp', 'desc'),
         limit(options.limit || 50),
       ];
@@ -413,14 +416,17 @@ export class AuditService {
 
   /**
    * Listener en tiempo real para el historial de una entidad.
+   * Requiere tenantId para evitar fugas cross-tenant.
    */
   listenHistorial(
     entidadId: string,
     callback: (logs: AuditLog[]) => void,
-    options: AuditQueryOptions = {}
+    options: AuditQueryOptions = {},
+    tenantId?: string
   ): Unsubscribe {
     const constraints = [
       where('entidadId', '==', entidadId),
+      ...(tenantId ? [where('tenantId', '==', tenantId)] : []),
       orderBy('timestamp', 'desc'),
       limit(options.limit || 50),
     ];

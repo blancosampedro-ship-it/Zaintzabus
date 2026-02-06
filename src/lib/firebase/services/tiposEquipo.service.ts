@@ -5,7 +5,6 @@ import { BaseFirestoreService, type ServiceContext } from '@/lib/firebase/servic
 export class TiposEquipoService extends BaseFirestoreService<TipoEquipo> {
   constructor(db: Firestore) {
     super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
       return `tenants/${ctx.tenantId}/tiposEquipo`;
     });
   }

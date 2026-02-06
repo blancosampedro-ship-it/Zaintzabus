@@ -1,11 +1,13 @@
 import type { Firestore } from 'firebase/firestore';
 import {
   collection,
+  doc,
   query,
   where,
   orderBy,
   limit,
   getDocs,
+  runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
 import type { Incidencia, EstadoIncidencia, Criticidad } from '@/types';
@@ -13,7 +15,7 @@ import { BaseFirestoreService, type ServiceContext } from '@/lib/firebase/servic
 import { FirestoreServiceError } from '@/lib/firebase/services/errors';
 
 // Lógica pura - sin dependencias de Firebase
-import { generarCodigoIncidencia, extraerCorrelativo } from '@/lib/logic/codigos';
+import { generarCodigoIncidencia } from '@/lib/logic/codigos';
 import { esTransicionValidaIncidencia } from '@/lib/logic/estados';
 
 export class IncidenciasService extends BaseFirestoreService<Incidencia> {
@@ -21,7 +23,6 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
     super(
       db,
       (ctx) => {
-        if (!ctx.tenantId) throw new Error('tenantId requerido');
         return `tenants/${ctx.tenantId}/incidencias`;
       },
       { enabled: true, entidad: 'incidencia' } // Auditoría habilitada
@@ -29,34 +30,25 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
   }
 
   /**
-   * Obtiene el último correlativo de incidencias del año actual.
-   * Firebase se encarga de leer, la lógica pura genera el código.
+   * Genera código correlativo de incidencia de forma transaccional.
+   * Usa un counter document para evitar condiciones de carrera.
+   * Doc: tenants/{tenantId}/counters/incidencias_{year}
    */
   private async generarCodigo(ctx: ServiceContext): Promise<string> {
     if (!ctx.tenantId) throw new FirestoreServiceError('invalid-argument', 'tenantId requerido');
 
     const year = new Date().getFullYear();
-    const prefix = `INC-${year}-`;
+    const counterRef = doc(this.db, `tenants/${ctx.tenantId}/counters`, `incidencias_${year}`);
 
-    // Firebase: obtener último código
-    const q = query(
-      collection(this.db, `tenants/${ctx.tenantId}/incidencias`),
-      where('codigo', '>=', prefix),
-      where('codigo', '<', `INC-${year + 1}-`),
-      orderBy('codigo', 'desc'),
-      limit(1)
-    );
+    const nextValue = await runTransaction(this.db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const current = snap.exists() ? (snap.data().value as number) : 0;
+      const next = current + 1;
+      tx.set(counterRef, { value: next, updatedAt: serverTimestamp() }, { merge: true });
+      return next;
+    });
 
-    const snap = await getDocs(q);
-    
-    // Lógica pura: generar el siguiente código
-    if (snap.empty) {
-      return generarCodigoIncidencia(1, year);
-    }
-
-    const lastCodigo = (snap.docs[0].data() as Incidencia).codigo;
-    const lastCorrelativo = extraerCorrelativo(lastCodigo) ?? 0;
-    return generarCodigoIncidencia(lastCorrelativo + 1, year);
+    return generarCodigoIncidencia(nextValue, year);
   }
 
   async createConCodigo(ctx: ServiceContext, data: Omit<Incidencia, 'id' | 'codigo' | 'createdAt' | 'updatedAt' | 'timestamps' | 'sla' | 'estado'>): Promise<string> {
@@ -132,6 +124,9 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
 
     const constraints: any[] = [];
 
+    // Filtro de soft delete a nivel de query
+    constraints.push(where('eliminado', '==', false));
+
     if (params.estado) {
       constraints.push(Array.isArray(params.estado) ? where('estado', 'in', params.estado) : where('estado', '==', params.estado));
     }
@@ -149,9 +144,7 @@ export class IncidenciasService extends BaseFirestoreService<Incidencia> {
 
     const q = query(collection(this.db, `tenants/${ctx.tenantId}/incidencias`), ...constraints);
     const snap = await getDocs(q);
-    return snap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as any) }))
-      .filter((i) => !(i as any).eliminado) as Incidencia[];
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Incidencia[];
   }
 
   async vincularOT(ctx: ServiceContext, incidenciaId: string, ordenTrabajoId: string): Promise<void> {

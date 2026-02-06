@@ -1,55 +1,54 @@
 import type { Firestore } from 'firebase/firestore';
 import {
   collection,
+  doc,
   query,
   where,
   orderBy,
   limit,
   getDocs,
+  runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
 import type { OrdenTrabajo, EstadoOT, TipoOT, MaterialOT, Contrato } from '@/types';
 import { BaseFirestoreService, type ServiceContext } from '@/lib/firebase/services/base';
 import { FirestoreServiceError } from '@/lib/firebase/services/errors';
 
-const TRANSICIONES_OT: Record<EstadoOT, EstadoOT[]> = {
-  pendiente: ['asignada', 'rechazada'],
-  asignada: ['en_curso', 'rechazada'],
-  en_curso: ['completada', 'rechazada'],
-  completada: ['validada', 'rechazada'],
-  validada: [],
-  rechazada: [],
-};
+// Lógica pura - sin dependencias de Firebase
+import { esTransicionValidaOT } from '@/lib/logic/estados';
 
 export class OrdenesTrabajoService extends BaseFirestoreService<OrdenTrabajo> {
   constructor(db: Firestore) {
-    super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
-      return `tenants/${ctx.tenantId}/ordenesTrabajo`;
-    });
+    super(
+      db,
+      (ctx) => {
+        return `tenants/${ctx.tenantId}/ordenesTrabajo`;
+      },
+      { enabled: true, entidad: 'ordenTrabajo' } // Auditoría habilitada
+    );
   }
 
+  /**
+   * Genera código correlativo de OT de forma transaccional.
+   * Usa un counter document para evitar condiciones de carrera.
+   * Doc: tenants/{tenantId}/counters/ordenesTrabajo_{year}
+   */
   private async generarCodigo(ctx: ServiceContext): Promise<string> {
     if (!ctx.tenantId) throw new FirestoreServiceError('invalid-argument', 'tenantId requerido');
 
     const year = new Date().getFullYear();
-    const prefix = `OT-${year}-`;
+    const counterRef = doc(this.db, `tenants/${ctx.tenantId}/counters`, `ordenesTrabajo_${year}`);
 
-    const q = query(
-      collection(this.db, `tenants/${ctx.tenantId}/ordenesTrabajo`),
-      where('codigo', '>=', prefix),
-      where('codigo', '<', `OT-${year + 1}-`),
-      orderBy('codigo', 'desc'),
-      limit(1)
-    );
+    const nextValue = await runTransaction(this.db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const current = snap.exists() ? (snap.data().value as number) : 0;
+      const next = current + 1;
+      tx.set(counterRef, { value: next, updatedAt: serverTimestamp() }, { merge: true });
+      return next;
+    });
 
-    const snap = await getDocs(q);
-    if (snap.empty) return `${prefix}00001`;
-
-    const last = (snap.docs[0].data() as any).codigo as string;
-    const lastNumber = parseInt(last.split('-')[2], 10);
-    const next = String(lastNumber + 1).padStart(5, '0');
-    return `${prefix}${next}`;
+    const correlativoStr = String(nextValue).padStart(5, '0');
+    return `OT-${year}-${correlativoStr}`;
   }
 
   async createConCodigo(
@@ -80,8 +79,7 @@ export class OrdenesTrabajoService extends BaseFirestoreService<OrdenTrabajo> {
     const ot = await this.getById(ctx, otId);
     if (!ot) throw new FirestoreServiceError('not-found', 'OT no encontrada');
 
-    const validas = TRANSICIONES_OT[ot.estado];
-    if (!validas.includes(nuevoEstado)) {
+    if (!esTransicionValidaOT(ot.estado, nuevoEstado)) {
       throw new FirestoreServiceError('failed-precondition', `Transición de ${ot.estado} a ${nuevoEstado} no permitida`);
     }
 
@@ -159,6 +157,9 @@ export class OrdenesTrabajoService extends BaseFirestoreService<OrdenTrabajo> {
 
     const constraints: any[] = [];
 
+    // Filtro de soft delete a nivel de query
+    constraints.push(where('eliminado', '==', false));
+
     if (params.tecnicoId) constraints.push(where('tecnicoId', '==', params.tecnicoId));
     if (params.operadorId) constraints.push(where('operadorId', '==', params.operadorId));
     if (params.estado) constraints.push(where('estado', '==', params.estado));
@@ -168,8 +169,6 @@ export class OrdenesTrabajoService extends BaseFirestoreService<OrdenTrabajo> {
 
     const q = query(collection(this.db, `tenants/${ctx.tenantId}/ordenesTrabajo`), ...constraints);
     const snap = await getDocs(q);
-    return snap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as any) }))
-      .filter((ot) => !(ot as any).eliminado) as OrdenTrabajo[];
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OrdenTrabajo[];
   }
 }

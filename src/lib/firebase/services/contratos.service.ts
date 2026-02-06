@@ -7,7 +7,6 @@ import { FirestoreServiceError } from '@/lib/firebase/services/errors';
 export class ContratosService extends BaseFirestoreService<Contrato> {
   constructor(db: Firestore) {
     super(db, (ctx) => {
-      if (!ctx.tenantId) throw new Error('tenantId requerido');
       return `tenants/${ctx.tenantId}/contratos`;
     });
   }

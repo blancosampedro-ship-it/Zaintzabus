@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { db } from '@/lib/firebase/config';
-import { IncidenciasService, type ServiceContext } from '@/lib/firebase/services';
-import { useTenantId } from '@/contexts/OperadorContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { IncidenciasService } from '@/lib/firebase/services';
+import { useServiceContext } from '@/hooks/useServiceContext';
 import type { Incidencia, EstadoIncidencia, Criticidad } from '@/types';
 
 // ============================================
@@ -26,8 +24,7 @@ interface UseIncidenciasResult {
 }
 
 export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidenciasResult {
-  const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { ctx, db, isReady, tenantId } = useServiceContext();
 
   const [incidencias, setIncidencias] = useState<Incidencia[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +40,7 @@ export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidencias
     : filtros.estado ?? '';
 
   const fetch = useCallback(async () => {
-    if (!tenantId) {
+    if (!isReady) {
       setIncidencias([]);
       setLoading(false);
       return;
@@ -52,11 +49,6 @@ export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidencias
     try {
       setLoading(true);
       setError(null);
-
-      const ctx: ServiceContext = {
-        tenantId,
-        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
-      };
 
       const service = new IncidenciasService(db);
       const result = await service.filtrar(ctx, {
@@ -73,7 +65,7 @@ export function useIncidencias(filtros: FiltrosIncidencias = {}): UseIncidencias
     } finally {
       setLoading(false);
     }
-  }, [tenantId, user, pageSize, operadorId, criticidad, estadoKey, filtros.estado]);
+  }, [isReady, ctx, db, pageSize, operadorId, criticidad, estadoKey, filtros.estado]);
 
   useEffect(() => {
     fetch();
@@ -94,15 +86,14 @@ interface UseIncidenciaResult {
 }
 
 export function useIncidencia(id: string | null | undefined): UseIncidenciaResult {
-  const tenantId = useTenantId();
-  const { user } = useAuth();
+  const { ctx, db, isReady } = useServiceContext();
 
   const [incidencia, setIncidencia] = useState<Incidencia | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
-    if (!id || !tenantId) {
+    if (!id || !isReady) {
       setIncidencia(null);
       setLoading(false);
       return;
@@ -111,11 +102,6 @@ export function useIncidencia(id: string | null | undefined): UseIncidenciaResul
     try {
       setLoading(true);
       setError(null);
-
-      const ctx: ServiceContext = {
-        tenantId,
-        actor: user ? { uid: user.uid, email: user.email ?? undefined } : undefined,
-      };
 
       const service = new IncidenciasService(db);
       const data = await service.getById(ctx, id);
@@ -126,7 +112,7 @@ export function useIncidencia(id: string | null | undefined): UseIncidenciaResul
     } finally {
       setLoading(false);
     }
-  }, [id, tenantId, user]);
+  }, [id, isReady, ctx, db]);
 
   useEffect(() => {
     fetch();

@@ -23,6 +23,8 @@ import {
 export interface UseAuditHistoryOptions extends AuditQueryOptions {
   /** Si true, usa listener en tiempo real */
   realtime?: boolean;
+  /** Tenant ID para filtrar por tenant (recomendado para evitar cross-tenant). */
+  tenantId?: string;
 }
 
 export interface UseAuditHistoryReturn {
@@ -47,7 +49,7 @@ export function useAuditHistory(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { realtime = false, limit: maxResults = 50, accion } = options;
+  const { realtime = false, limit: maxResults = 50, accion, tenantId } = options;
 
   const fetchLogs = useCallback(async () => {
     if (!entidadId) {
@@ -62,7 +64,7 @@ export function useAuditHistory(
     try {
       const db = getFirestore();
       const auditService = getAuditService(db);
-      const historial = await auditService.getHistorial(entidadId, { limit: maxResults, accion });
+      const historial = await auditService.getHistorial(entidadId, { limit: maxResults, accion }, tenantId);
       setLogs(historial);
     } catch (err) {
       console.error('[useAuditHistory] Error cargando historial:', err);
@@ -71,7 +73,7 @@ export function useAuditHistory(
     } finally {
       setLoading(false);
     }
-  }, [entidadId, maxResults, accion]);
+  }, [entidadId, maxResults, accion, tenantId]);
 
   useEffect(() => {
     if (!entidadId) {
@@ -92,7 +94,8 @@ export function useAuditHistory(
           setLogs(newLogs);
           setLoading(false);
         },
-        { limit: maxResults, accion }
+        { limit: maxResults, accion },
+        tenantId
       );
 
       return () => unsubscribe();
@@ -100,7 +103,7 @@ export function useAuditHistory(
       // Modo fetch único
       fetchLogs();
     }
-  }, [entidadId, realtime, fetchLogs, maxResults, accion]);
+  }, [entidadId, realtime, fetchLogs, maxResults, accion, tenantId]);
 
   return {
     logs,

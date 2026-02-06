@@ -54,6 +54,94 @@
       ]
     },
     {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "criticidad", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "criticidad", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "timestamps.recepcion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "codigo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "codigo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenesTrabajo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "auditoria.createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenesTrabajo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "tecnicoId", "order": "ASCENDING" },
+        { "fieldPath": "auditoria.createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenesTrabajo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "operadorId", "order": "ASCENDING" },
+        { "fieldPath": "auditoria.createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenesTrabajo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eliminado", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "auditoria.createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "inventario",
       "queryScope": "COLLECTION",
       "fields": [

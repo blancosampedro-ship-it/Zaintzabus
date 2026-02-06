@@ -31,6 +31,11 @@ import {
   obtenerSiguientesEstadosActivo,
   TRANSICIONES_ACTIVO,
   ETIQUETAS_ESTADO_ACTIVO,
+
+  // Órdenes de Trabajo
+  esTransicionValidaOT,
+  obtenerSiguientesEstadosOT,
+  esOTFinalizada,
 } from '../estados';
 
 // =============================================================================
@@ -452,5 +457,82 @@ describe('PERMISOS_TRANSICION_INCIDENCIA', () => {
     expect(PERMISOS_TRANSICION_INCIDENCIA['nueva->en_analisis']).toBeDefined();
     expect(PERMISOS_TRANSICION_INCIDENCIA['nueva->cerrada']).toBeDefined();
     expect(PERMISOS_TRANSICION_INCIDENCIA['resuelta->cerrada']).toBeDefined();
+  });
+});
+
+// =============================================================================
+// TESTS: ÓRDENES DE TRABAJO
+// =============================================================================
+
+describe('esTransicionValidaOT', () => {
+  it('permite pendiente → asignada', () => {
+    expect(esTransicionValidaOT('pendiente', 'asignada')).toBe(true);
+  });
+
+  it('permite pendiente → rechazada', () => {
+    expect(esTransicionValidaOT('pendiente', 'rechazada')).toBe(true);
+  });
+
+  it('NO permite pendiente → en_curso (necesita asignación)', () => {
+    expect(esTransicionValidaOT('pendiente', 'en_curso')).toBe(false);
+  });
+
+  it('permite en_curso → completada', () => {
+    expect(esTransicionValidaOT('en_curso', 'completada')).toBe(true);
+  });
+
+  it('permite completada → validada', () => {
+    expect(esTransicionValidaOT('completada', 'validada')).toBe(true);
+  });
+
+  it('NO permite validada → cualquier estado (terminal)', () => {
+    expect(esTransicionValidaOT('validada', 'pendiente')).toBe(false);
+    expect(esTransicionValidaOT('validada', 'rechazada')).toBe(false);
+  });
+
+  it('NO permite rechazada → cualquier estado (terminal)', () => {
+    expect(esTransicionValidaOT('rechazada', 'pendiente')).toBe(false);
+  });
+
+  it('cualquier estado no-terminal puede ir a rechazada', () => {
+    const nonTerminal: Array<'pendiente' | 'asignada' | 'en_curso' | 'completada'> = [
+      'pendiente', 'asignada', 'en_curso', 'completada',
+    ];
+    nonTerminal.forEach((estado) => {
+      expect(esTransicionValidaOT(estado, 'rechazada')).toBe(true);
+    });
+  });
+});
+
+describe('obtenerSiguientesEstadosOT', () => {
+  it('pendiente → [asignada, rechazada]', () => {
+    const next = obtenerSiguientesEstadosOT('pendiente');
+    expect(next).toEqual(['asignada', 'rechazada']);
+  });
+
+  it('validada → []', () => {
+    expect(obtenerSiguientesEstadosOT('validada')).toEqual([]);
+  });
+
+  it('rechazada → []', () => {
+    expect(obtenerSiguientesEstadosOT('rechazada')).toEqual([]);
+  });
+});
+
+describe('esOTFinalizada', () => {
+  it('validada es finalizada', () => {
+    expect(esOTFinalizada('validada')).toBe(true);
+  });
+
+  it('rechazada es finalizada', () => {
+    expect(esOTFinalizada('rechazada')).toBe(true);
+  });
+
+  it('en_curso NO es finalizada', () => {
+    expect(esOTFinalizada('en_curso')).toBe(false);
+  });
+
+  it('pendiente NO es finalizada', () => {
+    expect(esOTFinalizada('pendiente')).toBe(false);
   });
 });

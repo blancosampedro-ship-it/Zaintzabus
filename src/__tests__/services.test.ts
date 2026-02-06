@@ -289,19 +289,21 @@ describe('Preventivo Scheduling', () => {
   };
 
   it('should calculate next execution by days', () => {
-    const last = new Date('2024-01-01');
+    // Usamos T12:00:00 para evitar off-by-one por cambio DST (CET→CEST)
+    const last = new Date('2024-01-01T12:00:00');
     const next = calculateNextExecution(last, { tipo: 'dias', valor: 30 });
     expect(next.toISOString().slice(0, 10)).toBe('2024-01-31');
   });
 
   it('should calculate next execution by weeks', () => {
-    const last = new Date('2024-01-01');
+    const last = new Date('2024-01-01T12:00:00');
     const next = calculateNextExecution(last, { tipo: 'semanas', valor: 2 });
     expect(next.toISOString().slice(0, 10)).toBe('2024-01-15');
   });
 
   it('should calculate next execution by months', () => {
-    const last = new Date('2024-01-15');
+    // Cruza la frontera DST (CET→CEST); T12:00:00 da margen suficiente
+    const last = new Date('2024-01-15T12:00:00');
     const next = calculateNextExecution(last, { tipo: 'meses', valor: 3 });
     expect(next.toISOString().slice(0, 10)).toBe('2024-04-15');
   });

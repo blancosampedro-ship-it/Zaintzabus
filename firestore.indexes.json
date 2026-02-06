@@ -196,6 +196,14 @@
       ]
     },
     {
+      "collectionGroup": "preventivo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "activo", "order": "ASCENDING" },
+        { "fieldPath": "proximaEjecucion", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "auditoria",
       "queryScope": "COLLECTION",
       "fields": [

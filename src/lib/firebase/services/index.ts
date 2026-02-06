@@ -1,4 +1,6 @@
 export * from '@/lib/firebase/services/errors';
+export * from '@/lib/firebase/services/result';
+export * from '@/lib/firebase/services/context';
 export * from '@/lib/firebase/services/base';
 export * from '@/lib/firebase/services/utils';
 export * from '@/lib/firebase/services/audit.service';

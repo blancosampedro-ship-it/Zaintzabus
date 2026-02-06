@@ -21,7 +21,8 @@ import {
   onSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { FirestoreServiceError } from '@/lib/firebase/services/errors';
+import { FirestoreServiceError, mapFirebaseError } from '@/lib/firebase/services/errors';
+import { type Result, ok, fail } from '@/lib/firebase/services/result';
 import { getAuditService, calcularCambios, type TipoEntidad } from './audit.service';
 
 export interface ActorContext {
@@ -94,16 +95,38 @@ export type CollectionPathBuilder = (ctx: Required<Pick<ServiceContext, 'tenantI
  * - Listado paginado + filtros
  * - Búsqueda por términos (array-contains-any)
  * - Listener realtime
+ * - Validación centralizada de tenantId (configurable)
  */
 export class BaseFirestoreService<T extends { id: string }> {
   protected readonly db: Firestore;
   protected readonly collectionPath: CollectionPathBuilder;
   protected readonly auditConfig?: AuditConfig;
+  /** Si true (default), lanza si falta tenantId al construir col/ref. */
+  protected readonly requiresTenant: boolean;
 
-  constructor(db: Firestore, collectionPath: CollectionPathBuilder, auditConfig?: AuditConfig) {
+  constructor(
+    db: Firestore,
+    collectionPath: CollectionPathBuilder,
+    auditConfig?: AuditConfig,
+    options?: { requiresTenant?: boolean }
+  ) {
     this.db = db;
     this.collectionPath = collectionPath;
     this.auditConfig = auditConfig;
+    this.requiresTenant = options?.requiresTenant ?? true;
+  }
+
+  /**
+   * Valida que el contexto tenga tenantId si el servicio lo requiere.
+   * Centraliza la validación para evitar repetirla en cada servicio hijo.
+   */
+  protected validateContext(ctx: ServiceContext): void {
+    if (this.requiresTenant && !ctx.tenantId) {
+      throw new FirestoreServiceError(
+        'invalid-argument',
+        'tenantId es requerido para esta operación'
+      );
+    }
   }
 
   /**
@@ -149,11 +172,13 @@ export class BaseFirestoreService<T extends { id: string }> {
   }
 
   protected col(ctx: ServiceContext) {
+    this.validateContext(ctx);
     const path = this.collectionPath(ctx);
     return collection(this.db, path);
   }
 
   protected ref(ctx: ServiceContext, id: string) {
+    this.validateContext(ctx);
     return doc(this.db, this.collectionPath(ctx), id);
   }
 
@@ -186,7 +211,7 @@ export class BaseFirestoreService<T extends { id: string }> {
       
       return docRef.id;
     } catch (err) {
-      throw new FirestoreServiceError('unknown', 'Error creando documento', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -198,7 +223,7 @@ export class BaseFirestoreService<T extends { id: string }> {
       // Auditoría automática
       await this.auditarAccion(ctx, 'crear', id, null, auditedData);
     } catch (err) {
-      throw new FirestoreServiceError('unknown', 'Error creando documento con ID', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -215,7 +240,7 @@ export class BaseFirestoreService<T extends { id: string }> {
 
       return data;
     } catch (err) {
-      throw new FirestoreServiceError('unknown', 'Error obteniendo documento', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -234,7 +259,7 @@ export class BaseFirestoreService<T extends { id: string }> {
       await this.auditarAccion(ctx, 'actualizar', id, datosAnteriores, datosNuevos);
     } catch (err) {
       if (err instanceof FirestoreServiceError) throw err;
-      throw new FirestoreServiceError('unknown', 'Error actualizando documento', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -260,7 +285,7 @@ export class BaseFirestoreService<T extends { id: string }> {
       await this.auditarAccion(ctx, 'eliminar', id);
     } catch (err) {
       if (err instanceof FirestoreServiceError) throw err;
-      throw new FirestoreServiceError('unknown', 'Error eliminando documento (soft delete)', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -269,13 +294,18 @@ export class BaseFirestoreService<T extends { id: string }> {
     try {
       await deleteDoc(this.ref(ctx, id));
     } catch (err) {
-      throw new FirestoreServiceError('unknown', 'Error eliminando documento (hard delete)', err);
+      throw mapFirebaseError(err);
     }
   }
 
   async list(ctx: ServiceContext, options: ListOptions = {}): Promise<ListPage<T>> {
     try {
       const constraints: QueryConstraint[] = [];
+
+      // Filtro de soft delete a nivel de query (evita traer docs eliminados)
+      if (!options.includeDeleted) {
+        constraints.push(where('eliminado', '==', false));
+      }
 
       for (const f of options.filters ?? []) {
         constraints.push(where(f.fieldPath as any, f.op, f.value as any));
@@ -297,9 +327,9 @@ export class BaseFirestoreService<T extends { id: string }> {
       const hasMore = snapshot.docs.length > pageSize;
       const docs = hasMore ? snapshot.docs.slice(0, -1) : snapshot.docs;
 
-      const items = docs
-        .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T)
-        .filter((d) => (options.includeDeleted ? true : !(d as any).eliminado));
+      const items = docs.map(
+        (d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T
+      );
 
       return {
         items,
@@ -307,7 +337,7 @@ export class BaseFirestoreService<T extends { id: string }> {
         hasMore,
       };
     } catch (err) {
-      throw new FirestoreServiceError('unknown', 'Error listando documentos', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -323,16 +353,23 @@ export class BaseFirestoreService<T extends { id: string }> {
       const max = options.limit ?? 20;
 
       const constraints: QueryConstraint[] = [];
+
+      // Filtro de soft delete a nivel de query
+      if (!options.includeDeleted) {
+        constraints.push(where('eliminado', '==', false));
+      }
+
       constraints.push(where(field as any, 'array-contains-any', terms.slice(0, 10) as any));
       constraints.push(limit(max));
 
       const q = query(this.col(ctx), ...constraints);
       const snapshot = await getDocs(q);
 
-      const items = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T);
-      return options.includeDeleted ? items : items.filter((d) => !(d as any).eliminado);
+      return snapshot.docs.map(
+        (d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T
+      );
     } catch (err) {
-      throw new FirestoreServiceError('unknown', 'Error buscando documentos', err);
+      throw mapFirebaseError(err);
     }
   }
 
@@ -362,6 +399,11 @@ export class BaseFirestoreService<T extends { id: string }> {
   listenList(ctx: ServiceContext, options: ListOptions, cb: (items: T[]) => void, onError?: (err: unknown) => void): Unsubscribe {
     const constraints: QueryConstraint[] = [];
 
+    // Filtro de soft delete a nivel de query
+    if (!options.includeDeleted) {
+      constraints.push(where('eliminado', '==', false));
+    }
+
     for (const f of options.filters ?? []) {
       constraints.push(where(f.fieldPath as any, f.op, f.value as any));
     }
@@ -378,10 +420,53 @@ export class BaseFirestoreService<T extends { id: string }> {
     return onSnapshot(
       q,
       (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T);
-        cb(options.includeDeleted ? items : items.filter((d) => !(d as any).eliminado));
+        const items = snap.docs.map(
+          (d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as T
+        );
+        cb(items);
       },
       (err) => onError?.(err)
     );
+  }
+
+  // ===========================================================================
+  // Result<T> wrappers — opt-in, sin romper firmas existentes
+  // ===========================================================================
+
+  /**
+   * Versión segura de `getById` que devuelve `Result<T | null>` en lugar de lanzar.
+   * Útil en flujos donde se quiere inspeccionar el error sin try/catch.
+   */
+  async safeGetById(ctx: ServiceContext, id: string): Promise<Result<T | null>> {
+    try {
+      const data = await this.getById(ctx, id);
+      return ok(data);
+    } catch (err) {
+      return fail(err instanceof FirestoreServiceError ? err : mapFirebaseError(err));
+    }
+  }
+
+  /**
+   * Versión segura de `list` que devuelve `Result<ListPage<T>>`.
+   */
+  async safeList(ctx: ServiceContext, options: ListOptions = {}): Promise<Result<ListPage<T>>> {
+    try {
+      const page = await this.list(ctx, options);
+      return ok(page);
+    } catch (err) {
+      return fail(err instanceof FirestoreServiceError ? err : mapFirebaseError(err));
+    }
+  }
+
+  /**
+   * Versión segura de `createAutoId` que devuelve `Result<string>` (el ID generado).
+   */
+  async safeCreate(ctx: ServiceContext, data: Omit<T, 'id'>): Promise<Result<string>> {
+    try {
+      const id = await this.createAutoId(ctx, data);
+      return ok(id);
+    } catch (err) {
+      return fail(err instanceof FirestoreServiceError ? err : mapFirebaseError(err));
+    }
   }
 }
